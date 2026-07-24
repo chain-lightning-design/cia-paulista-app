@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="kiosk.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='staging'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the chat composer) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Cia Paulista — Check-in Kiosk</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<script src="env.js"></script>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script>Babel.registerPreset("classic",{presets:[[Babel.availablePresets["react"],{runtime:"classic"}]]});</script>
+<script src="vendor/tailwind.js"></script>
+<script src="vendor/jsQR.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="data.js"></script>
+<script src="auth-gate.js" data-app="Check-in Kiosk" data-roles="frontdesk,owner,admin"></script>
+<script src="onboarding.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#E9E9EE', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', warn:'#E8B53A',
+    ink:'#0B0B0D', surface:'#151517', elevated:'#1c1c22'
+  }}}}
+</script>
+<style>
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  button{ -webkit-tap-highlight-color:transparent }
+  @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+  .pop{animation:pop .25s ease-out}
+  @keyframes scanline{0%{top:6%}50%{top:calc(94% - 2px)}100%{top:6%}}
+  .scanline{animation:scanline 2.6s ease-in-out infinite}
+  /* ===== Full-bleed device fit =====
+     The kiosk IS the page — nothing wraps it, so the app itself has to keep clear of the
+     iPad's notch / home indicator. The inset goes on the ROOT, which carries no Tailwind
+     padding utility: Tailwind's stylesheet is injected at runtime AFTER this block, so
+     padding declared here on a bar that also uses a Tailwind px- or py- class would just
+     be overridden. h-screen + border-box: the inset eats into the 100dvh, never past it. */
+  .safe-frame{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+  /* Camera viewfinder. Bounded on BOTH axes so it can never push the method tabs or the
+     recent strip off a landscape tablet, and never shrinks to a postage stamp in
+     portrait. Tablet gets the bigger box — this is the tablet-primary screen. */
+  /* Method tabs may scroll sideways on a narrow phone — do it without a scrollbar
+     stealing height from a touch UI. */
+  .tabscroll{scrollbar-width:none;-ms-overflow-style:none}
+  .tabscroll::-webkit-scrollbar{display:none}
+  .qrbox{width:min(88vw, 44vh, 520px)}
+  @media (min-width:768px){ .qrbox{width:min(80vw, 52vh, 560px)} }
+  /* ===== Tatame — dark performance theme (shared with the Owner Console) ===== */
+  .tatame{color:#F3F3F5}
+  .tatame .bg-white{background:#151517}                 /* card + full-screen success surface */
+  .tatame input,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+</style>
+</head>
+<body class="bg-gradient-to-br from-[#0B0B0D] to-[#151517] min-h-screen text-navy tatame">
+<div id="root"></div>
+<script type="text/babel" data-presets="classic">
+const {useState} = React;
+/* ===== Which environment is this tablet running in? (CP.env — frozen API) =========
+   LIVE is a tablet mounted at the front desk that REAL members walk up to. On live
+   it must never print other people's PINs, never offer a control that fakes a
+   check-in, and never show a made-up name. Every fiction below is gated to
+   !IS_LIVE — staging/demo/jsdom keep the full demo story, unchanged. */
+const ENV=(window.CP&&window.CP.env)||{};
+const IS_LIVE=!!ENV.isLive, IS_STAGING=!!ENV.isStaging;
+const BELT={White:'#ECEEF1',Gray:'#9CA3AF',Yellow:'#E8B53A',Blue:'#4F76C9',Purple:'#8160C9',Brown:'#8A5A33',Black:'#2E323C'};
+const beltStyle=b=>{const s={background:BELT[b]||'#9AA7B4'}; if(b==='White')s.border='1px solid #d3d8df'; return s;};
+const MEMBERS=[
+  {n:'Carlos Mendez',belt:'White',str:3,pin:'1234'},
+  {n:'Sarah Lin',belt:'Blue',str:2,pin:'2580'},
+  {n:'Bruno Alves',belt:'Purple',str:2,pin:'1111'},
+  {n:'Mia Tanaka',belt:'White',str:2,pin:'0000'},
+  {n:'Diego Costa',belt:'Blue',str:0,pin:'7777'},
+  {n:'Liam Park',belt:'Gray',str:1,pin:'4321',kid:true},
+  {n:'Sofia Reyes',belt:'Yellow',str:2,pin:'5678',kid:true},
+];
+const progOf=m=>m.kid?'Kids':'Adults';
+// The gym's REAL member list (kept in sync by data.js) mapped into the kiosk's shape.
+// On LIVE this is the ONLY roster the kiosk searches — the seven people above are the
+// staging demo's cast. A gym can give a member a PIN by putting one in attrs.pin;
+// until any member has one, the PIN pad says plainly that PINs aren't switched on
+// instead of matching an invented person and writing a fake check-in to the gym record.
+// email/attrs ride along too (unused by check-in itself) so the invite panel can prefill a
+// known email and match a member against their invites.list() row without a second fetch.
+const memberRow=r=>({n:r.name,belt:r.belt||'White',str:+r.stripes||0,kid:r.program==='Kids',id:r.id,pin:String((r.attrs&&r.attrs.pin)||''),email:r.email||'',attrs:r.attrs||null});
+const cloudRoster=()=>{ try{ const rows=(window.CP&&window.CP.data)?window.CP.data.members.all():[];
+  return (rows||[]).filter(r=>r&&r.name).map(memberRow); }catch(e){ return []; } };
+const roster=()=> IS_LIVE?cloudRoster():MEMBERS;
+
+// --- Today's class board. A mock "now" gives the kiosk a sense of on-now / upcoming / late. ---
+const NOW_MIN = 18*60+50;                 // 6:50 PM "now"
+const NOW_LABEL = '6:50 PM';
+const mins=(h,m,p)=>{let H=h%12; if(p==='p')H+=12; return H*60+m;};
+const CLASSES=[
+  {id:'kids',  time:'4:30 PM', start:mins(4,30,'p'), end:mins(5,30,'p'), name:'Kids BJJ',        coach:'Prof. Sarah',   prog:'Kids'},
+  {id:'gi',    time:'6:30 PM', start:mins(6,30,'p'), end:mins(7,30,'p'), name:'Gi — All Levels', coach:'Prof. Marcelo', prog:'Adults'},
+  {id:'openm', time:'7:30 PM', start:mins(7,30,'p'), end:mins(8,30,'p'), name:'No-Gi Open Mat',  coach:'Prof. Diego',   prog:'Adults'},
+];
+const LATE_AFTER=10;                       // minutes past start before a check-in counts as "late"
+const EARLY_WINDOW=45, LATE_WINDOW=45;     // how far before start / after start you can still check in
+const lateMinFor=c=>Math.max(0, NOW_MIN-c.start);
+const isLate=c=>NOW_MIN>c.start+LATE_AFTER;
+// classes a given member could check into right now (program-matched, inside the check-in window)
+const eligibleFor=m=>CLASSES.filter(c=>c.prog===progOf(m) && NOW_MIN>=c.start-EARLY_WINDOW && NOW_MIN<=c.start+LATE_WINDOW);
+// nearest class for a member with nothing currently open (closest by start time)
+const nearestFor=m=>{const list=CLASSES.filter(c=>c.prog===progOf(m)); if(!list.length)return null;
+  return list.slice().sort((a,b)=>Math.abs(a.start-NOW_MIN)-Math.abs(b.start-NOW_MIN))[0];};
+const relText=c=>{ if(NOW_MIN<c.start) return 'starts in '+(c.start-NOW_MIN)+' min';
+  if(NOW_MIN<=c.end){ const d=NOW_MIN-c.start; return d<=LATE_AFTER?'on now':'started '+d+' min ago'; }
+  return 'ended '+(NOW_MIN-c.end)+' min ago'; };
+const onNow = CLASSES.find(c=>NOW_MIN>=c.start && NOW_MIN<=c.end);
+
+// --- Drop-in visitors (traveling grapplers) -------------------------------------------------
+// Some have a waiver on file (returning), some don't (must sign). Deliberate duplicates —
+// three "John"s, two of them "John Silva" on different belts — so the name search has to
+// disambiguate by first name, last name AND belt, exactly as the front desk would.
+const BELTS_ADULT=['White','Blue','Purple','Brown','Black'];
+const DROPIN_FEE=20;                          // flat drop-in fee for regular classes
+const feeFor=c=>c.id==='openm'?0:DROPIN_FEE;  // Open Mat is always free for visitors
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const shortD=iso=>{const p=String(iso).split('-'); return MON[(+p[1])-1]+' '+(+p[2]);};
+const DROPINS=[
+  {first:'John',  last:'Silva',    belt:'Purple', str:1, gym:'Alliance São Paulo', waiver:'2026-02-14', last_here:'2026-03-02'},
+  {first:'John',  last:'Okonkwo',  belt:'Blue',   str:2, gym:'Gracie Barra HQ',    waiver:null,         last_here:null},
+  {first:'Maria', last:'Oliveira', belt:'Brown',  str:0, gym:'Checkmat',           waiver:'2026-05-30', last_here:'2026-05-30'},
+  {first:'Kenji', last:'Watanabe', belt:'Black',  str:1, gym:'Yamasaki Academy',   waiver:'2025-12-02', last_here:'2026-01-11'},
+  {first:'Ana',   last:'Silva',    belt:'White',  str:3, gym:'Dream Art',          waiver:null,         last_here:null},
+  {first:'John',  last:'Silva',    belt:'Blue',   str:0, gym:'Unaffiliated',       waiver:'2026-06-01', last_here:'2026-06-01'},
+];
+// LIVE has no visitor database behind it yet, so it offers no invented visitors to
+// pick from — every drop-in goes through the "new here" path, which is real: it
+// collects the visitor's own details, waiver and class, and records the check-in.
+const VISITORS = IS_LIVE?[]:DROPINS;
+
+function Belt({belt,str}){return <span className="inline-flex items-center gap-2 text-base"><span className="w-4 h-7 rounded-sm" style={beltStyle(belt)}></span>{belt}{str?(' · '+str+' stripe'+(str>1?'s':'')):''}</span>;}
+
+// Belt + stripes picker for a new (unknown) drop-in.
+function BeltPick({value,str,onBelt,onStr}){
+  return <div className="space-y-3">
+    <div className="flex gap-2">{BELTS_ADULT.map(b=><button key={b} type="button" onClick={()=>onBelt(b)}
+        className={"flex-1 flex flex-col items-center gap-1.5 rounded-xl py-3 border transition "+(value===b?'border-crimson bg-crimson/10':'border-white/10 bg-mist hover:bg-white/10')}>
+        <span className="w-7 h-4 rounded-sm" style={beltStyle(b)}></span><span className="text-xs font-semibold">{b}</span></button>)}</div>
+    <div className="flex items-center gap-2 text-sm"><span className="text-slate mr-1">Stripes</span>
+      {[0,1,2,3,4].map(n=><button key={n} type="button" onClick={()=>onStr(n)} className={"w-8 h-8 rounded-lg text-sm font-semibold border transition "+(str===n?'border-crimson bg-crimson/10':'border-white/10 bg-mist hover:bg-white/10')}>{n}</button>)}</div>
+  </div>;
+}
+
+// Full drop-in flow: search DB → (new? collect details) → (no waiver? sign) → pick class → check in.
+function DropIn({onCheckIn,onCancel}){
+  const [step,setStep]=useState('search');   // search | new | waiver | class
+  const [query,setQuery]=useState('');
+  const [visitor,setVisitor]=useState(null);
+  const [form,setForm]=useState({first:'',last:'',belt:'White',str:0,gym:'',phone:'',email:''});
+  const [agree,setAgree]=useState(false);
+  const [sign,setSign]=useState('');
+
+  const q=query.trim().toLowerCase();
+  const matches=q?VISITORS.filter(d=>(d.first+' '+d.last).toLowerCase().includes(q)||d.first.toLowerCase().startsWith(q)||d.last.toLowerCase().startsWith(q)):[];
+  const eligible=CLASSES.filter(c=>c.prog==='Adults' && NOW_MIN>=c.start-EARLY_WINDOW && NOW_MIN<=c.start+LATE_WINDOW);
+  const adultClasses=eligible.length?eligible:CLASSES.filter(c=>c.prog==='Adults');
+
+  const choose=d=>{ setVisitor(d); setStep(d.waiver?'class':'waiver'); };            // returning w/ waiver → straight to class
+  const beginNew=()=>{ const p=query.trim().split(/\s+/); setForm(f=>Object.assign({},f,{first:p[0]||'',last:p.slice(1).join(' ')})); setStep('new'); };
+  const saveNew=()=>{ if(!form.first.trim()||!form.last.trim())return; setVisitor(Object.assign({firstVisit:true,waiver:null},form)); setStep('waiver'); };
+  const doSign=()=>{ if(!agree||!sign.trim())return; setVisitor(v=>Object.assign({},v,{waiver:'today'})); setStep('class'); };
+  const pickClass=c=>onCheckIn({n:(visitor.first+' '+visitor.last).trim(),belt:visitor.belt,str:visitor.str||0},c,
+      {dropIn:true,fee:feeFor(c),gym:visitor.gym,firstVisit:!!visitor.firstVisit,phone:visitor.phone||'',email:visitor.email||''});
+
+  if(step==='search') return <div>
+    <div className="text-center mb-4"><div className="text-2xl font-extrabold">Visiting? Welcome. 🥋</div><div className="text-slate text-sm mt-1">Drop in for class — find your name or add yourself.</div></div>
+    <input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Type your name…" className="w-full rounded-2xl border border-slate/30 px-5 py-4 text-xl focus:border-navy focus:outline-none"/>
+    {matches.length>1 && <div className="text-[12px] text-slate mt-2 ml-1">{matches.length} people match — check the <b className="text-navy">belt</b> &amp; gym to pick the right one.</div>}
+    <div className="mt-3 space-y-2">
+      {matches.map((d,i)=><button key={i} onClick={()=>choose(d)} className="w-full flex items-center justify-between gap-3 bg-mist hover:bg-white/10 rounded-2xl px-5 py-3.5 text-left">
+        <div className="min-w-0"><div className="text-lg font-semibold truncate">{d.first} {d.last}</div>
+          <div className="text-sm text-slate truncate">{d.gym}{d.last_here?' · last here '+shortD(d.last_here):' · first visit'}</div></div>
+        <div className="flex items-center gap-3 shrink-0"><Belt belt={d.belt} str={d.str}/>
+          <span className={"text-[11px] font-semibold px-2 py-1 rounded-full "+(d.waiver?'bg-good/15 text-good':'bg-warn/15 text-warn')}>{d.waiver?'✓ waiver':'⚠ waiver'}</span></div>
+      </button>)}
+      {q && <button onClick={beginNew} className="w-full text-left rounded-2xl px-5 py-3.5 border border-dashed border-white/15 text-slate hover:bg-white/5">+ New here — add “{query.trim()}” as a drop-in</button>}
+      {!q && <div className="text-slate/60 text-center text-sm py-8">{IS_LIVE?'Type your name to sign in as a visitor.':'Start typing to find yourself, or add a new drop-in.'}</div>}
+    </div>
+    <button onClick={onCancel} className="mt-5 w-full text-slate hover:text-navy text-sm py-2">← Back to member check-in</button>
+  </div>;
+
+  if(step==='new') return <div>
+    <div className="text-center mb-4"><div className="text-2xl font-extrabold">Welcome — first time here?</div><div className="text-slate text-sm mt-1">A few details and your waiver, then you’re on the mat.</div></div>
+    <div className="grid grid-cols-2 gap-3">
+      <div><label className="text-xs text-slate">First name</label><input value={form.first} onChange={e=>setForm(f=>Object.assign({},f,{first:e.target.value}))} className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+      <div><label className="text-xs text-slate">Last name</label><input value={form.last} onChange={e=>setForm(f=>Object.assign({},f,{last:e.target.value}))} className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+      <div><label className="text-xs text-slate">Phone <span className="text-slate/50">(optional)</span></label><input value={form.phone} onChange={e=>setForm(f=>Object.assign({},f,{phone:e.target.value}))} placeholder="(626) 555-0123" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+      <div><label className="text-xs text-slate">Email <span className="text-slate/50">(optional)</span></label><input value={form.email} onChange={e=>setForm(f=>Object.assign({},f,{email:e.target.value}))} placeholder="name@email.com" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+    </div>
+    <div className="text-[12px] text-slate/50 mt-1.5">We’ll only use this to send class info and the odd offer — never shared.</div>
+    <div className="mt-3"><label className="text-xs text-slate">Home gym <span className="text-slate/50">(optional)</span></label><input value={form.gym} onChange={e=>setForm(f=>Object.assign({},f,{gym:e.target.value}))} placeholder="e.g. Gracie Barra HQ" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+    <div className="mt-4"><label className="text-xs text-slate">Belt</label><div className="mt-2"><BeltPick value={form.belt} str={form.str} onBelt={b=>setForm(f=>Object.assign({},f,{belt:b}))} onStr={n=>setForm(f=>Object.assign({},f,{str:n}))}/></div></div>
+    <div className="flex gap-2 mt-6">
+      <button onClick={()=>setStep('search')} className="flex-1 border border-white/15 rounded-2xl py-3 font-semibold text-slate hover:bg-white/5">Back</button>
+      <button onClick={saveNew} disabled={!form.first.trim()||!form.last.trim()} className="flex-1 bg-crimson text-white rounded-2xl py-3 font-semibold disabled:opacity-40">Continue</button>
+    </div>
+  </div>;
+
+  if(step==='waiver') return <div>
+    <div className="text-center mb-3"><div className="text-2xl font-extrabold">Liability waiver</div><div className="text-slate text-sm mt-1">{visitor.first}, please read and sign before training.</div></div>
+    <div className="bg-mist rounded-2xl p-4 text-sm text-slate/90 leading-relaxed max-h-[34vh] md:max-h-[280px] overflow-y-auto border border-white/5">
+      <p className="mb-2"><b className="text-navy">Assumption of risk.</b> Brazilian Jiu-Jitsu is a full-contact activity that carries an inherent risk of injury. I understand these risks and choose to participate voluntarily.</p>
+      <p className="mb-2"><b className="text-navy">Release of liability.</b> I release Cia Paulista Jiu-Jitsu, its instructors and staff from any claim for injury, loss or damage arising from my participation, to the fullest extent permitted by law.</p>
+      <p className="mb-2"><b className="text-navy">Fitness to train.</b> I confirm I am physically able to train and have disclosed any relevant medical conditions to the front desk.</p>
+      <p><b className="text-navy">Media.</b> I consent to incidental photo/video taken in class being used by the academy.</p>
+    </div>
+    <label className="flex items-center gap-3 mt-4 cursor-pointer"><input type="checkbox" checked={agree} onChange={e=>setAgree(e.target.checked)} className="w-5 h-5 accent-crimson"/><span className="text-sm">I have read and agree to the waiver above.</span></label>
+    <div className="mt-3"><label className="text-xs text-slate">Sign — type your full name</label><input value={sign} onChange={e=>setSign(e.target.value)} placeholder={(visitor.first+' '+visitor.last).trim()} className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+    <div className="flex gap-2 mt-6">
+      <button onClick={()=>setStep(visitor.firstVisit?'new':'search')} className="flex-1 border border-white/15 rounded-2xl py-3 font-semibold text-slate hover:bg-white/5">Back</button>
+      <button onClick={doSign} disabled={!agree||!sign.trim()} className="flex-1 bg-crimson text-white rounded-2xl py-3 font-semibold disabled:opacity-40">Sign &amp; continue</button>
+    </div>
+  </div>;
+
+  return <div>
+    <div className="text-center mb-4"><div className="text-2xl font-extrabold">Which class, {visitor.first}? 🥋</div>
+      <div className="text-slate text-sm mt-1">{visitor.firstVisit?'Waiver signed ✓':'Waiver on file ✓'} — pick your class.</div></div>
+    <div className="space-y-3">{adultClasses.map(c=>{const fee=feeFor(c);
+      return <button key={c.id} onClick={()=>pickClass(c)} className="w-full flex items-center justify-between bg-mist hover:bg-crimson hover:text-white rounded-2xl px-5 py-4 text-left transition group">
+        <div><div className="text-lg font-bold">{c.name}</div><div className="text-sm text-slate group-hover:text-white/70">{c.time} · {c.coach} · {relText(c)}</div></div>
+        <span className={"text-sm font-bold px-3 py-1 rounded-full shrink-0 "+(fee===0?'bg-good/15 text-good':'bg-warn/15 text-warn group-hover:bg-white/20 group-hover:text-white')}>{fee===0?'FREE':'$'+fee}</span>
+      </button>;})}</div>
+    <div className="text-[12px] text-slate/50 mt-4 text-center">Open Mat is free for visitors · class drop-ins are ${DROPIN_FEE}, payable at the front desk.</div>
+    <button onClick={()=>setStep('search')} className="mt-3 w-full text-slate hover:text-navy text-sm py-2">← Start over</button>
+  </div>;
+}
+
+// --- Live QR scanner: getUserMedia + jsQR, decodes the member app's check-in payload
+//     (CP2/CP1 pipe formats + legacy JSON — see parseQR). Needs HTTPS (the live site) or
+//     localhost; falls back to a friendly message + Simulate button when there's no camera.
+//     Power management (PROJECT_LOG §17.3): the jsQR decode pass is throttled to ~300ms
+//     (native BarcodeDetector keeps its fast loop); after 3 min with no successful scan the
+//     camera stops ("Scanner is resting — tap to wake", resumes <1s); after 10 min idle in
+//     QR mode the kiosk returns to its home tab. Every successful scan resets both timers. ---
+function QRScan({paused,onScan,onSimulate,onIdleHome,pinOn}){
+  const T=window.__kioskQrTimings||{};               // headless-test override; production defaults:
+  const DECODE_MS=T.decode||300, NAP_MS=T.nap||3*60*1000, IDLE_MS=T.idleHome||10*60*1000;
+  const videoRef=React.useRef(null);
+  const [cam,setCam]=useState('starting');          // starting | on | denied | nocam
+  const [facing,setFacing]=useState('user');        // kiosk screen faces the member -> front camera first
+  const [flash,setFlash]=useState(null);            // transient "not a member code" notice
+  const [asleep,setAsleep]=useState(false);         // 3-min nap: camera off, tap to wake
+  const pausedRef=React.useRef(paused); pausedRef.current=paused;
+  const lastRef=React.useRef({data:'',at:0});       // dedupe: same code within 4s = one check-in
+  const idleRef=React.useRef(0);                    // 10-min "leave QR mode" timer id
+  const napRef=React.useRef(0);                     // 3-min "camera nap" timer id
+  const napArmRef=React.useRef(null);               // set while the camera runs — lets touches re-arm the nap
+
+  // 10-min idle in QR mode -> hand the kiosk back to its home (PIN) tab.
+  const bumpIdle=()=>{ clearTimeout(idleRef.current);
+    idleRef.current=setTimeout(()=>{ try{ if(onIdleHome)onIdleHome(); }catch(e){} },IDLE_MS); };
+  React.useEffect(()=>{ bumpIdle(); return ()=>clearTimeout(idleRef.current); },[]);
+
+  // Any touch on the kiosk while the scanner is up is activity: a member poking the
+  // screen must not have the camera nap or the kiosk go home from under them.
+  React.useEffect(()=>{ const onDown=()=>{ bumpIdle(); if(napArmRef.current) napArmRef.current(); };
+    document.addEventListener('pointerdown',onDown,true);
+    return ()=>document.removeEventListener('pointerdown',onDown,true); },[]);
+
+  React.useEffect(()=>{
+    if(asleep) return;                              // resting: camera intentionally off
+    let stream=null,timer=0,stop=false;
+    const video=videoRef.current;
+    if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)||typeof jsQR!=='function'){ setCam('nocam'); return; }
+    const canvas=document.createElement('canvas');
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    // Native detector when the browser has one (Chrome/Edge/Android) — faster and more
+    // tolerant than jsQR. Safari/iPad falls through to the jsQR path below.
+    let detector=null; try{ if(window.BarcodeDetector) detector=new window.BarcodeDetector({formats:['qr_code']}); }catch(e){}
+    const armNap=()=>{ clearTimeout(napRef.current);
+      napRef.current=setTimeout(()=>{ if(!stop) setAsleep(true); },NAP_MS); };
+    const found=data=>{ const now=Date.now();
+      // Sliding dedup window: a member holding the phone steady keeps refreshing
+      // the suppression — only a genuinely NEW presentation re-checks-in.
+      if(data===lastRef.current.data&&now-lastRef.current.at<4000){ lastRef.current.at=now; return; }
+      lastRef.current={data,at:now};
+      if(onScan(data)){ armNap(); bumpIdle(); }     // real member scan -> both idle timers restart
+      else { armNap();                              // failed read = someone IS at the kiosk — never nap mid-fumble
+        setFlash('That’s not a Cia Paulista member code'); setTimeout(()=>setFlash(null),2500); } };
+    // jsQR at FULL camera resolution (downscaling starved it of pixels — a QR on a phone
+    // screen a foot from a fixed-focus iPad camera is only ~150px in a 720p frame).
+    // Pass 1: whole frame. Pass 2: center crop at native res, where members hold the phone.
+    const jsqrPass=()=>{
+      const w=video.videoWidth,h=video.videoHeight,sc=Math.min(1,1280/Math.max(w,h));
+      canvas.width=Math.round(w*sc); canvas.height=Math.round(h*sc);
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      let img=ctx.getImageData(0,0,canvas.width,canvas.height);
+      let code=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+      if(!code){
+        const side=Math.round(Math.min(w,h)*0.62), sx=Math.round((w-side)/2), sy=Math.round((h-side)/2);
+        canvas.width=side; canvas.height=side;
+        ctx.drawImage(video,sx,sy,side,side,0,0,side,side);
+        img=ctx.getImageData(0,0,side,side);
+        code=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+      }
+      return code&&code.data?code.data:null;
+    };
+    let lastDecode=0;                               // jsQR throttle clock (~halves CPU, latency imperceptible)
+    const tick=async()=>{ if(stop)return;
+      try{
+        if(!pausedRef.current && video && video.readyState>=2 && video.videoWidth){
+          let data=null;
+          if(detector){ try{ const codes=await detector.detect(video); data=codes&&codes[0]&&codes[0].rawValue||null; }
+            catch(e){ detector=null; } }                    // detector unusable -> jsQR from now on
+          if(!data){ const now=Date.now();
+            if(now-lastDecode>=DECODE_MS){ lastDecode=now; data=jsqrPass(); } }
+          if(data) found(data);
+        }
+      }catch(e){}
+      if(!stop) timer=setTimeout(tick,detector?180:DECODE_MS);  // native path stays fast
+    };
+    navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:facing,width:{ideal:1920},height:{ideal:1080}}})
+      .then(s=>{ if(stop){ s.getTracks().forEach(t=>t.stop()); return; }
+        stream=s; video.srcObject=s; const p=video.play(); if(p&&p.catch)p.catch(()=>{}); setCam('on'); napArmRef.current=armNap; armNap(); tick(); })
+      .catch(err=>{ setCam(err&&(err.name==='NotAllowedError'||err.name==='SecurityError')?'denied':'nocam'); });
+    return ()=>{ stop=true; clearTimeout(timer); clearTimeout(napRef.current); napArmRef.current=null;
+      if(stream)stream.getTracks().forEach(t=>t.stop()); if(video)video.srcObject=null; };
+  },[facing,asleep]);
+
+  const wake=()=>{ if(!asleep) return; setCam('starting'); setAsleep(false); bumpIdle(); };
+
+  return <div className="text-center py-2">
+    <div className="qrbox relative aspect-square mx-auto rounded-2xl overflow-hidden bg-ink ring-1 ring-white/10">
+      <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" style={facing==='user'?{transform:'scaleX(-1)'}:null}></video>
+      {!asleep && cam!=='on' && <div className="absolute inset-0 grid place-items-center p-6">
+        {cam==='starting' && <div className="text-slate animate-pulse">Starting camera…</div>}
+        {cam==='denied' && <div className="text-slate text-sm leading-relaxed">Camera access is blocked for this site.<br/>iPad: tap <b className="text-navy">ᴀA</b> in the address bar → Website Settings → Camera → <b className="text-navy">Allow</b>, then reload.</div>}
+        {cam==='nocam' && <div className="text-slate text-sm">No camera available here — {pinOn?'use PIN or Name':'tap Name to find yourself, or ask the front desk'}.{!IS_LIVE && <span><br/>Or try the button below.</span>}</div>}
+      </div>}
+      {!asleep && cam==='on' && <div className="absolute inset-4 md:inset-6 pointer-events-none opacity-80">
+        <span className="absolute w-10 h-10 top-0 left-0 border-t-4 border-l-4 border-white/70 rounded-tl-lg"></span>
+        <span className="absolute w-10 h-10 top-0 right-0 border-t-4 border-r-4 border-white/70 rounded-tr-lg"></span>
+        <span className="absolute w-10 h-10 bottom-0 left-0 border-b-4 border-l-4 border-white/70 rounded-bl-lg"></span>
+        <span className="absolute w-10 h-10 bottom-0 right-0 border-b-4 border-r-4 border-white/70 rounded-br-lg"></span>
+        <span className="scanline absolute left-[8%] right-[8%] h-[2px] bg-crimson/80 rounded-full" style={{boxShadow:'0 0 12px 2px rgba(225,29,42,.55)'}}></span>
+      </div>}
+      {asleep && <button onClick={wake} className="absolute inset-0 w-full h-full grid place-items-center bg-ink active:bg-white/5 transition">
+        <div><div className="text-4xl mb-3">😴</div><div className="text-lg font-bold text-navy">Scanner is resting</div><div className="text-slate text-sm mt-1.5">Saving power — tap to wake</div></div>
+      </button>}
+      {flash && <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-warn text-ink text-sm font-semibold rounded-full px-4 py-1.5 pop whitespace-nowrap">{flash}</div>}
+    </div>
+    <div className="text-slate text-sm md:text-base mt-4 max-w-[560px] mx-auto">{asleep?'The scanner takes a break when nobody scans for a while — one tap brings it right back.':cam==='on'?'Hold your member QR code up to the camera — about a foot (30 cm) away, nice and steady.':(pinOn?'You can also check in with PIN or Name.':'You can also tap Name to find yourself.')}</div>
+    <div className="flex items-center justify-center gap-3 mt-4">
+      {!asleep && cam==='on' && <button onClick={()=>setFacing(f=>f==='user'?'environment':'user')} className="border border-white/15 text-slate hover:bg-white/5 rounded-2xl px-5 py-2.5 text-sm font-semibold">🔄 Flip camera</button>}
+      {/* Demo control: it checks in a random person, so it never appears on a live kiosk. */}
+      {!IS_LIVE && <button onClick={onSimulate} className="border border-white/15 text-slate hover:bg-white/5 rounded-2xl px-5 py-2.5 text-sm font-semibold">Simulate scan</button>}
+    </div>
+  </div>;
+}
+
+// --- ☁ Cloud connect panel — for the front desk, not members. The kiosk always works on
+//     its own; connecting just makes check-ins flow into the gym's shared record. ---
+function CloudPanel({onClose}){
+  const hasData=!!(window.CP&&window.CP.data);
+  const [st,setSt]=useState(hasData?window.CP.data.status():null);
+  const [email,setEmail]=useState('kiosk@cia-paulista.app');
+  const [pw,setPw]=useState('');
+  const [working,setWorking]=useState(false);
+  const [msg,setMsg]=useState(null);                // {ok:bool, text}
+  React.useEffect(()=>{ if(!hasData) return; return window.CP.data.onStatus(setSt); },[]);
+  const connected=!!(st&&st.user);
+  const connect=()=>{ if(working) return;
+    if(!pw.trim()){ setMsg({ok:false,text:'Type the kiosk key first — it’s on the setup card from Cia Paulista.'}); return; }
+    setWorking(true); setMsg(null);
+    window.CP.data.auth.signInPassword(email.trim(),pw)
+      .then(r=>{ setWorking(false);
+        if(r&&r.ok){ setMsg({ok:true,text:'Connected — check-ins now save to the gym’s shared record.'}); setPw(''); }
+        else setMsg({ok:false,text:(r&&r.error)||'That didn’t work — give it another try.'}); })
+      .catch(()=>{ setWorking(false); setMsg({ok:false,text:'Couldn’t reach the cloud right now. The kiosk keeps working on this device.'}); });
+  };
+  const disconnect=()=>{ try{ const p=window.CP.data.auth.signOut(); if(p&&p.catch)p.catch(()=>{}); }catch(e){}
+    setMsg({ok:true,text:'Disconnected. Check-ins stay on this device until you connect again.'}); };
+  return <div className="absolute inset-0 bg-ink/92 backdrop-blur-sm grid place-items-center overflow-y-auto p-5 md:p-8 pop" onClick={onClose}>
+    <div className="w-full max-w-[440px] bg-white rounded-3xl p-5 md:p-6 ring-1 ring-white/10" onClick={e=>e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xl font-extrabold">☁ Gym connection</div>
+        <button onClick={onClose} className="w-11 h-11 rounded-xl text-slate hover:bg-white/10 active:scale-95 transition grid place-items-center text-lg">✕</button>
+      </div>
+      <div className="text-[12px] text-slate/70 mb-1">For front-desk setup — members can just tap outside to keep checking in.</div>
+      {!hasData && <div className="text-slate text-sm leading-relaxed py-3">Cloud isn’t part of this build — the kiosk works fully on this device.</div>}
+      {hasData && <div>
+        <div className="text-sm mt-1">{connected
+          ? <span className="text-good">● Connected as kiosk</span>
+          : <span className="text-slate">○ This device only</span>}</div>
+        <div className="text-slate text-[13px] mt-1 leading-relaxed">{connected
+          ? (st.queued>0 ? st.queued+' check-in'+(st.queued>1?'s':'')+' waiting to sync — they’ll go up on their own.' : 'Check-ins save to the gym’s shared record.')
+          : 'Check-ins stay on this kiosk. Connect to share them with the front desk and owner apps.'}</div>
+        {connected
+          ? <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-[13px] text-slate truncate">{st.user.email}</span>
+              <button onClick={disconnect} className="text-sm text-slate hover:text-navy underline underline-offset-2 shrink-0 py-3">Disconnect</button>
+            </div>
+          : (st&&!st.configured)
+          ? <div className="mt-4 text-slate text-sm leading-relaxed">Cloud isn’t switched on for this kiosk yet — check-ins still save right here.</div>
+          : <div className="mt-4 space-y-3">
+              <div><label className="text-xs text-slate">Kiosk email</label>
+                <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')connect();}} className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+              <div><label className="text-xs text-slate">Kiosk key</label>
+                <input type="password" value={pw} onChange={e=>{setPw(e.target.value); if(msg&&!msg.ok)setMsg(null);}} onKeyDown={e=>{if(e.key==='Enter')connect();}} placeholder="••••••••" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/></div>
+              <button onClick={connect} disabled={working} className="w-full bg-crimson text-white rounded-2xl py-3 font-semibold active:scale-[.98] transition disabled:opacity-70">
+                {working
+                  ? <span className="inline-flex items-center gap-2"><span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>Connecting…</span>
+                  : 'Connect'}
+              </button>
+            </div>}
+        {msg && <div role="status" className={"mt-3 text-sm leading-relaxed "+(msg.ok?'text-good':'text-warn')}>{msg.ok?'✓ ':''}{msg.text}</div>}
+      </div>}
+    </div>
+  </div>;
+}
+
+// --- ✉ Member invite panel — for the front desk, not members. Search the roster this
+//     kiosk already searches for check-in (roster()) and send that member their personal
+//     app invite. Frontend never mints or fakes an outcome: without a mailer configured the
+//     Edge Function itself says so ({emailSent:false, inviteUrl}) and this panel hands the
+//     front desk a copyable link + plain "read it to them / text it yourself" instruction —
+//     no invented "sent!" toast. Fail-soft offline/unconfigured: calm, never a dead end. ---
+function InvitePanel({onClose}){
+  const hasInvites=()=>{ try{ return !!(window.CP&&window.CP.data&&window.CP.data.invites); }catch(e){ return false; } };
+  const [query,setQuery]=useState('');
+  const [rows,setRows]=useState([]);            // invites.list('member') rows — drives the state chip per member
+  const [loadErr,setLoadErr]=useState(false);
+  const [target,setTarget]=useState(null);      // member row picked to invite -> email-confirm mini step
+  const [email,setEmail]=useState('');
+  const [sending,setSending]=useState(false);
+  const [result,setResult]=useState(null);      // last send outcome for `target`: {ok,emailSent,inviteUrl,error,reason}
+  const [copied,setCopied]=useState(false);
+
+  React.useEffect(()=>{
+    if(!hasInvites()) return;
+    let alive=true;
+    Promise.resolve(window.CP.data.invites.list('member')).then(r=>{
+      if(!alive) return;
+      if(r&&r.ok) setRows(r.invites||[]); else setLoadErr(true);
+    }).catch(()=>{ if(alive) setLoadErr(true); });
+    return ()=>{ alive=false; };
+  },[]);
+
+  const q=query.trim().toLowerCase();
+  const people=roster();                                   // same live/demo roster the rest of the kiosk searches
+  const allMatches=q?people.filter(m=>m.n.toLowerCase().includes(q)):people;
+  const matches=allMatches.slice(0,8);
+  const moreCount=allMatches.length-matches.length;         // hidden past the 8-row cap — never a silent truncation
+
+  // Most recent invite for this member -> a plain state word. `state` is the field the invite
+  // Edge Function's `list` action computes server-side (pending/accepted/expired/revoked from
+  // accepted_at/revoked_at/expires_at) — derive it locally too as a defensive fallback in case
+  // a row ever arrives without it.
+  const inviteFor=m=>{
+    const hit=rows.find(r=>r&&(r.member_id===m.id||(r.email&&m.email&&String(r.email).toLowerCase()===String(m.email).toLowerCase())));
+    if(!hit) return null;
+    if(hit.state) return hit.state;
+    if(hit.accepted_at) return 'accepted';
+    if(hit.revoked_at) return 'revoked';
+    if(hit.expires_at&&new Date(hit.expires_at).getTime()<Date.now()) return 'expired';
+    return 'pending';
+  };
+  const STATE_LABEL={pending:'Invite sent',accepted:'✓ In the app',expired:'Invite expired',revoked:'Invite revoked'};
+  const STATE_CLS={pending:'bg-warn/15 text-warn',accepted:'bg-good/15 text-good',expired:'bg-slate/15 text-slate',revoked:'bg-slate/15 text-slate'};
+
+  const openConfirm=m=>{ setTarget(m); setEmail(m.email||(m.attrs&&m.attrs.email)||''); setResult(null); };
+  const send=()=>{
+    if(sending) return;
+    const addr=email.trim();
+    if(!addr){ setResult({ok:false,error:'Enter the member’s email first.'}); return; }
+    setSending(true); setResult(null);
+    const done=r=>{ setSending(false); setResult(r||{ok:false,error:'Something went wrong — try again.'});
+      if(r&&r.ok){ setRows(rs=>rs.filter(x=>x.member_id!==target.id).concat([{member_id:target.id,email:addr,state:'pending'}])); } };
+    if(!hasInvites()){ done({ok:false,reason:'unconfigured'}); return; }
+    Promise.resolve(window.CP.data.invites.issueMember(target.id,addr)).then(done,()=>done({ok:false,reason:'offline'}));
+  };
+  const copyLink=url=>{ try{ navigator.clipboard&&navigator.clipboard.writeText(url); }catch(e){} setCopied(true); setTimeout(()=>setCopied(false),2000); };
+  const targetState=target?inviteFor(target):null;          // re-check so tapping an already-accepted member is acknowledged, not silent
+
+  return <div className="absolute inset-0 bg-ink/92 backdrop-blur-sm grid place-items-center overflow-y-auto p-5 md:p-8 pop" onClick={target?undefined:onClose}>
+    <div className="w-full max-w-[460px] bg-white rounded-3xl p-5 md:p-6 ring-1 ring-white/10" onClick={e=>e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xl font-extrabold">✉️ Invite to the app</div>
+        <button onClick={onClose} className="w-11 h-11 rounded-xl text-slate hover:bg-white/10 active:scale-95 transition grid place-items-center text-lg">✕</button>
+      </div>
+      {!target ? <div>
+        <div className="text-[12px] text-slate/70 mb-3">Find a member, then send their personal invite link.</div>
+        <input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search members…" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base"/>
+        {!hasInvites() && <div className="mt-3 text-slate text-sm leading-relaxed">Invites aren’t part of this build yet — check back after the next update.</div>}
+        {hasInvites()&&loadErr && <div className="mt-3 text-slate text-sm leading-relaxed">Can’t reach the gym’s system right now — invite status may be out of date, but sending still works.</div>}
+        <div className="mt-3 space-y-2 max-h-[46vh] overflow-y-auto">
+          {matches.map((m,i)=>{ const st=inviteFor(m);
+            return <button key={i} onClick={()=>openConfirm(m)} disabled={!hasInvites()} className="w-full flex items-center justify-between gap-3 bg-mist hover:bg-white/10 disabled:opacity-50 rounded-2xl px-4 py-3 text-left transition">
+              <span className="font-semibold truncate">{m.n}</span>
+              {st ? <span className={"text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 "+(STATE_CLS[st]||'bg-slate/15 text-slate')}>{STATE_LABEL[st]||st}</span>
+                 : <span className="text-[11px] text-slate shrink-0">Invite to app ›</span>}
+            </button>; })}
+          {q&&!matches.length && <div className="text-slate text-sm text-center py-4">No member matches “{query.trim()}”.</div>}
+          {!q&&!people.length && <div className="text-slate text-sm text-center py-4">The member list hasn’t reached this tablet yet.</div>}
+          {moreCount>0 && <div className="text-slate/60 text-[11px] text-center py-1">{moreCount} more — keep typing</div>}
+        </div>
+      </div> : (
+        !(result&&result.ok) ? <div>
+          <div className="text-sm text-slate mb-3">Inviting <b className="text-navy">{target.n}</b></div>
+          {targetState==='accepted' && <div className="mb-3 text-[12px] text-slate bg-mist rounded-xl px-3 py-2.5 leading-relaxed">{target.n} already uses the app — sending a new invite gives them a fresh link.</div>}
+          <label className="text-xs text-slate">Member’s email</label>
+          <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')send();}} placeholder="name@email.com" type="email" className="w-full rounded-xl border border-slate/30 px-4 py-3 text-base mt-1"/>
+          {result&&!result.ok && <div className="mt-2 text-sm text-warn leading-relaxed">{result.error||(result.reason==='offline'?'Can’t reach the gym’s system right now — check the internet and try again.':'Invites aren’t available on this device right now.')}</div>}
+          <div className="flex gap-2 mt-4">
+            <button onClick={()=>setTarget(null)} className="flex-1 border border-white/15 rounded-2xl py-3 font-semibold text-slate hover:bg-white/5">Back</button>
+            <button onClick={send} disabled={sending} className="flex-1 bg-crimson text-white rounded-2xl py-3 font-semibold active:scale-[.98] transition disabled:opacity-70">
+              {sending? <span className="inline-flex items-center gap-2 justify-center"><span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>Sending…</span> : 'Send invite'}
+            </button>
+          </div>
+        </div> : (
+          result.emailSent ? <div className="text-center py-2">
+            <div className="w-16 h-16 rounded-full bg-good/15 text-good grid place-items-center text-3xl mx-auto mb-3">✓</div>
+            <div className="font-bold text-lg">Invite emailed</div>
+            <div className="text-slate text-sm mt-1">{target.n} will get a link to set up their app sign-in.</div>
+            <button onClick={onClose} className="w-full mt-5 bg-navy text-white rounded-2xl py-3 font-semibold active:scale-[.98] transition">Done</button>
+          </div> : <div>
+            <div className="text-center mb-3">
+              <div className="w-16 h-16 rounded-full bg-warn/15 text-warn grid place-items-center text-3xl mx-auto mb-3">✉</div>
+              <div className="font-bold text-lg">Invite ready — email sending isn’t set up yet</div>
+              <div className="text-slate text-sm mt-1">Copy this link and send it yourself — read it to {(target.n.split(' ')[0])} or text it to them.</div>
+            </div>
+            <div className="bg-mist rounded-xl px-3 py-2.5 text-[12px] break-all">{result.inviteUrl}</div>
+            <button onClick={()=>copyLink(result.inviteUrl)} className="w-full mt-3 bg-crimson text-white rounded-2xl py-3 font-semibold active:scale-[.98] transition">{copied?'Copied ✓':'Copy link'}</button>
+            <button onClick={onClose} className="w-full mt-2 text-slate hover:text-navy text-sm py-2">Done</button>
+          </div>
+        )
+      )}
+    </div>
+  </div>;
+}
+
+// --- "Not switched on yet" panel ---------------------------------------------------
+// Used where a check-in method has nothing real behind it on a live kiosk. It never
+// leaves the member stuck: it says plainly what is happening and hands them the two
+// methods that DO work, each a real button with its own pressed state.
+function NotYet({icon,title,body,onQR,onName}){
+  return <div className="text-center py-4 max-w-[440px] mx-auto">
+    <div className="w-24 h-24 mx-auto rounded-full bg-mist grid place-items-center text-5xl">{icon}</div>
+    <div className="text-xl md:text-2xl font-extrabold mt-4">{title}</div>
+    <div className="text-slate mt-2 leading-relaxed">{body}</div>
+    <div className="flex flex-col sm:flex-row gap-2 mt-6">
+      <button onClick={onQR} className="flex-1 bg-crimson text-white rounded-2xl py-3.5 font-semibold active:scale-[.98] transition">📷 Scan my QR code</button>
+      <button onClick={onName} className="flex-1 border border-white/15 text-slate hover:bg-white/5 active:scale-[.98] rounded-2xl py-3.5 font-semibold transition">🔎 Find my name</button>
+    </div>
+  </div>;
+}
+
+// The tab the kiosk sits on when nobody is using it. Off-live that's the PIN pad (the
+// demo's front door). On a live kiosk the PIN pad isn't switched on, so the tablet rests
+// on the method that really works: the QR scanner (it sleeps by itself after 3 minutes).
+const HOME = IS_LIVE?'qr':'pin';
+
+function App(){
+  const [method,setMethod]=useState(HOME);
+  const [pin,setPin]=useState(''); const [query,setQuery]=useState(''); const [err,setErr]=useState(false);
+  const [done,setDone]=useState(null);                    // {m, cls, late, lateMin}
+  const [picking,setPicking]=useState(null);              // {m, opts}  — class picker
+  const [noClass,setNoClass]=useState(null);              // {m, near}  — nothing open right now
+  // "Just checked in" strip. Off-live it is seeded with the demo cast; on a LIVE kiosk
+  // it starts EMPTY and only ever shows people who really checked in — today's rows from
+  // the gym record, plus anyone who checks in on this tablet while it's open.
+  const [recent,setRecent]=useState(IS_LIVE?[]:['Mia Tanaka','Diego Costa','Bruno Alves']);
+  const [cloudOpen,setCloudOpen]=useState(false);         // ☁ connect panel (front-desk)
+  const [inviteOpen,setInviteOpen]=useState(false);       // ✉ member invite panel (front-desk)
+  const [cloud,setCloud]=useState(()=>{ try{ return window.CP&&window.CP.data?window.CP.data.status():null; }catch(e){ return null; } });
+  const [,bumpRoster]=useState(0);                        // re-render when the member list syncs
+  React.useEffect(()=>{ if(!(window.CP&&window.CP.data)) return; return window.CP.data.onStatus(setCloud); },[]);
+  React.useEffect(()=>{ if(!(window.CP&&window.CP.data&&window.CP.data.members)) return;
+    try{ return window.CP.data.members.onChange(()=>bumpRoster(n=>n+1)); }catch(e){} },[]);
+  const addRecent=n=>setRecent(r=>[n].concat(r.filter(x=>x!==n)).slice(0,6));
+  React.useEffect(()=>{ if(!IS_LIVE) return;              // live only: real rows, never seeded ones
+    if(!(window.CP&&window.CP.data&&window.CP.data.checkins)) return;
+    let off=null;
+    try{ window.CP.data.checkins.today().then(rows=>{
+      const names=(rows||[]).map(r=>r&&r.name).filter(Boolean);
+      if(names.length) setRecent(r=>names.concat(r).filter((n,i,a)=>a.indexOf(n)===i).slice(0,6));
+    }).catch(()=>{}); }catch(e){}
+    try{ off=window.CP.data.checkins.onNew(r=>{ if(r&&r.name) addRecent(r.name); }); }catch(e){}
+    return ()=>{ try{ if(off) off(); }catch(e){} };
+  },[]);
+  const busy = done||picking||noClass||cloudOpen||inviteOpen;
+
+  const reset=()=>{ setPin(''); setQuery(''); setErr(false); };
+  const checkIn=(m,cls,extra)=>{
+    extra=extra||{};
+    const late=cls?isLate(cls):false, lateMin=cls?lateMinFor(cls):0;
+    setPicking(null); setNoClass(null);
+    setDone(Object.assign({m,cls,late,lateMin},extra));
+    addRecent(m.n);
+    reset(); if(extra.dropIn) setMethod(HOME);            // drop-in finishes → kiosk returns to its idle home
+    // One overlay timer at a time — a rapid second check-in must not have its
+    // welcome cut short by the previous member's timeout.
+    clearTimeout(checkIn._t); checkIn._t=setTimeout(()=>setDone(null),extra.dropIn?4600:3800);
+    // Record the check-in. CP.data mirrors the legacy cp_checkins store itself (Owner
+    // Console keeps reading it same-origin) AND queues the cloud row; if data.js ever
+    // failed to load, fall back to the direct push so a check-in is never lost.
+    try{
+      const rec={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),name:m.n,at:new Date().toISOString().slice(0,10),ts:Date.now(),cls:cls?cls.name:'',late:!!late,dropIn:!!extra.dropIn,fee:extra.fee||0,phone:extra.phone||'',email:extra.email||'',gym:extra.gym||'',source:'kiosk'};
+      if(m.id||extra.memberId) rec.memberId=m.id||extra.memberId;
+      if(window.CP&&window.CP.data&&window.CP.data.checkins){ const p=window.CP.data.checkins.add(rec); if(p&&p.catch)p.catch(()=>{}); }
+      else { const q=JSON.parse(localStorage.getItem('cp_checkins')||'[]'); q.push(rec); localStorage.setItem('cp_checkins',JSON.stringify(q)); }
+    }catch(e){}
+  };
+  // Member identified → decide: straight in / pick a class / nothing open.
+  const identify=m=>{ const opts=eligibleFor(m);
+    if(opts.length===1) checkIn(m,opts[0]);
+    else if(opts.length>1) setPicking({m,opts});
+    else setNoClass({m,near:nearestFor(m)}); };
+
+  // Camera scan → parse the member app's payload → same identify flow as PIN/Name.
+  // Members not in this kiosk's demo DB still check in from the data carried in the QR.
+  // Accepts: CP2|id|name|belt|stripes|A/K|bucket — field 2 is the member id, usually a
+  // SHORT prefix (~10 hex chars, no dashes) of the uuid to keep the QR sparse for the
+  // fixed-focus iPad camera — plus the older CP1|name|belt|stripes|A/K|bucket and the
+  // legacy JSON {"t":"cp.checkin",...} so every installed member app keeps working.
+  const parseQR=data=>{ if(typeof data!=='string') return null; data=data.trim();
+    if(data.slice(0,4)==='CP2|'){ const f=data.split('|'); return f[2]?{id:f[1]||null,n:f[2],b:f[3],s:+f[4]||0,p:f[5]}:null; }
+    if(data.slice(0,4)==='CP1|'){ const f=data.split('|'); return f[1]?{n:f[1],b:f[2],s:+f[3]||0,p:f[4]}:null; }
+    try{ const o=JSON.parse(data); if(o&&o.t==='cp.checkin'&&o.n) return {n:o.n,b:o.b,s:o.s,p:o.p}; }catch(e){}
+    return null; };
+  const handleScan=data=>{ const o=parseQR(data); if(!o) return false;
+    let m=null;
+    if(o.id){ // CP2 field 2: full uuid OR a short prefix of it. Prefix-match the synced
+      // member list (dash-stripped, case-blind) — a hit upgrades the scan to the FULL
+      // canonical uuid; no hit lets the short id flow through (data.js resolves it).
+      try{ const bare=String(o.id).replace(/-/g,'').toLowerCase();
+        const row=(window.CP&&window.CP.data?window.CP.data.members.all():[]).find(r=>r&&String(r.id||'').replace(/-/g,'').toLowerCase().startsWith(bare));
+        if(row) m={n:row.name,belt:row.belt,str:row.stripes||0,kid:row.program==='Kids',id:row.id}; }catch(e){}
+    }
+    if(!m){ const local=roster().find(x=>x.n.toLowerCase()===String(o.n).toLowerCase());
+      if(local) m=o.id?Object.assign({},local,{id:o.id}):local; }
+    if(!m){ m={n:String(o.n),belt:o.b||'White',str:+o.s||0,kid:o.p==='K'}; if(o.id)m.id=o.id; }
+    identify(m); return true; };
+  window.__kioskScan=handleScan;                     // headless test hook (jsdom smoke)
+
+  // Fullscreen toggle — fills the iPad when the kiosk runs in a Safari tab
+  // (installed home-screen PWAs are already chrome-less, so the button hides there).
+  const standalone=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||!!navigator.standalone;
+  const fsOk=!standalone&&!!(document.fullscreenEnabled||document.webkitFullscreenEnabled);
+  const toggleFS=()=>{ try{
+    if(document.fullscreenElement||document.webkitFullscreenElement) (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+    else { const el=document.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }
+  }catch(e){} };
+
+  const people=roster();                                   // demo cast off-live · the gym's real members on live
+  const pinOn=people.some(m=>m.pin);                       // is PIN check-in actually backed by anything?
+  const press=d=>{ if(busy)return; const np=(pin+d).slice(0,4); setPin(np); setErr(false);
+    if(np.length===4){ const m=people.find(x=>x.pin===np); if(m) setTimeout(()=>identify(m),150); else { setErr(true); setTimeout(()=>setPin(''),600); } } };
+  const matches=query.trim()?people.filter(m=>m.n.toLowerCase().includes(query.toLowerCase())):[];
+  const adults=people.filter(m=>!m.kid);
+  const goQR=()=>{ setMethod('qr'); reset(); };
+  const goName=()=>{ setMethod('name'); reset(); };
+
+  return <div className="safe-frame h-screen w-full flex flex-col relative bg-white overflow-hidden">
+      {/* header — phone drops the secondary lines, tablet gets the big clock */}
+      <div className="bg-ink text-white px-4 sm:px-6 md:px-10 py-3 md:py-5 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 md:gap-3 min-w-0"><div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-crimson grid place-items-center font-black text-base md:text-xl shrink-0">CP</div><div className="min-w-0"><div className="font-bold text-base md:text-xl leading-tight truncate">Cia Paulista Jiu-Jitsu</div><div className="text-white/60 text-xs md:text-sm truncate">Check in to class</div></div></div>
+        <div className="flex items-center gap-2 md:gap-4 shrink-0">
+          <div className="text-right"><div className="text-xl md:text-3xl font-bold leading-none">{NOW_LABEL}</div><div className="hidden sm:block text-white/60 text-xs md:text-sm mt-1">{onNow?('On now · '+onNow.name):'No class on right now'}</div></div>
+          <button id="header-invite" onClick={()=>setInviteOpen(true)} title="Invite a member to the app" className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition grid place-items-center text-xl">✉️</button>
+          <button onClick={()=>setCloudOpen(true)} title="Cloud connection" className="relative w-11 h-11 md:w-12 md:h-12 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition grid place-items-center text-xl">☁
+            <span className={"absolute top-1 right-1 w-2.5 h-2.5 rounded-full "+(cloud&&cloud.user&&cloud.online===true?'bg-good':cloud&&cloud.user&&cloud.online===false?'bg-warn':'bg-white/20')}></span>
+          </button>
+          {fsOk && <button onClick={toggleFS} title="Full screen" className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition grid place-items-center text-xl">⛶</button>}
+        </div>
+      </div>
+
+      {/* method tabs — every label stays fully readable. Each tab is sized by its own
+          label and shares the leftover width (flex-auto), never squeezed below its text
+          (shrink-0); on a phone narrower than the five labels the row scrolls sideways
+          instead of clipping "Drop-in" in half. */}
+      <div className="tabscroll w-full max-w-[860px] lg:max-w-[960px] mx-auto flex gap-1.5 md:gap-2 px-4 sm:px-6 pt-4 md:pt-5 shrink-0 overflow-x-auto">
+        {[['pin','🔢 PIN'],['name','🔎 Name'],['qr','📷 QR'],['face','😊 Face'],['dropin','🥋 Drop-in']].map(([k,l])=>
+          <button key={k} id={"method-"+k} onClick={()=>{setMethod(k);reset();}} className={"flex-auto shrink-0 px-2 py-2.5 md:py-3.5 rounded-xl text-[11px] sm:text-sm md:text-lg font-semibold whitespace-nowrap transition "+(method===k?'bg-crimson text-white shadow':'bg-mist text-slate hover:bg-white/10')}>{l}</button>)}
+      </div>
+
+      {/* content — fills the tablet screen; m-auto centers each panel without clipping if it overflows */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex w-full">
+        <div className="m-auto w-full max-w-[860px] lg:max-w-[960px] px-4 sm:px-6 py-5 md:py-8">
+        {/* PIN — real only where members actually have one. On a live kiosk with no PINs
+            set up, the pad would match nobody but the demo cast, so it is replaced by a
+            plain-words panel and the two methods that do work. It comes back on its own
+            the moment a member has a PIN. */}
+        {method==='pin' && !pinOn && <NotYet icon="🔢"
+          title="PIN check-in isn’t switched on yet"
+          body="Nobody here has a check-in PIN yet. You can scan your member QR code, or find your name in the list."
+          onQR={goQR} onName={goName}/>}
+
+        {method==='pin' && pinOn && <div className="text-center">
+          <div className="text-slate mb-3">Enter your 4-digit PIN</div>
+          <div className={"flex justify-center gap-3 mb-5 "+(err?'pop':'')}>{[0,1,2,3].map(i=><span key={i} className={"w-5 h-5 rounded-full "+(i<pin.length?(err?'bg-crimson':'bg-[#F3F3F5]'):'bg-white/15')}></span>)}</div>
+          {err && <div className="text-crimson text-sm mb-2 -mt-3">PIN not recognized — try again</div>}
+          <div className="grid grid-cols-3 gap-2.5 md:gap-3 max-w-[300px] md:max-w-[380px] mx-auto">
+            {['1','2','3','4','5','6','7','8','9'].map(d=><button key={d} onClick={()=>press(d)} className="h-14 md:h-20 rounded-2xl bg-mist hover:bg-slate/10 text-2xl md:text-3xl font-semibold active:scale-95 transition">{d}</button>)}
+            <button onClick={()=>setPin('')} className="h-14 md:h-20 rounded-2xl text-base font-semibold text-slate hover:bg-mist active:scale-95 transition">Clear</button>
+            <button onClick={()=>press('0')} className="h-14 md:h-20 rounded-2xl bg-mist hover:bg-slate/10 text-2xl md:text-3xl font-semibold active:scale-95 transition">0</button>
+            <button onClick={()=>setPin(p=>p.slice(0,-1))} className="h-14 md:h-20 rounded-2xl text-2xl text-slate hover:bg-mist active:scale-95 transition">⌫</button>
+          </div>
+          {/* Demo cheat-sheet — never on a live kiosk: it would print real people's PINs
+              on a screen anyone at the front desk can read. */}
+          {!IS_LIVE && <div className="text-[12px] text-slate/50 mt-4">Demo PINs: 1234 Carlos · 2580 Sarah · 1111 Bruno · 4321 Liam (kid)</div>}
+        </div>}
+
+        {method==='name' && <div>
+          <input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Type your name…" className="w-full rounded-2xl border border-slate/30 px-5 py-4 text-xl focus:border-navy focus:outline-none"/>
+          <div className="mt-4 space-y-2">{matches.map((m,i)=><button key={i} onClick={()=>identify(m)} className="w-full flex items-center justify-between bg-mist hover:bg-slate/10 rounded-2xl px-5 py-4 text-left"><span className="text-lg font-semibold">{m.n}</span><Belt belt={m.belt} str={m.str}/></button>)}
+            {query.trim()&&matches.length===0 && <div className="text-slate text-center py-6">{people.length
+              ? 'No match — check with the front desk.'
+              : 'The member list hasn’t reached this tablet yet — scan your QR code, or check with the front desk.'}</div>}</div>
+        </div>}
+
+        {method==='qr' && <QRScan paused={!!busy} pinOn={pinOn} onScan={handleScan} onSimulate={()=>{ if(!IS_LIVE&&MEMBERS.length) identify(MEMBERS[Math.floor(Math.random()*MEMBERS.length)]); }} onIdleHome={()=>{setMethod(HOME);reset();setPicking(null);setNoClass(null);}}/>}
+
+        {/* Face — there is no face matching behind this anywhere yet. Off-live the demo
+            simulates it; on live the tab tells the truth instead of checking in a random
+            adult, and still hands the member a working way in. */}
+        {method==='face' && IS_LIVE && <NotYet icon="😊"
+          title="Face check-in isn’t switched on yet"
+          body="This gym isn’t using face check-in. If it’s switched on later it will be opt-in and for adults only. For now, scan your member QR code or find your name."
+          onQR={goQR} onName={goName}/>}
+
+        {method==='face' && !IS_LIVE && <div className="text-center py-4">
+          <div className="w-44 h-44 mx-auto rounded-full border-4 border-white/15 grid place-items-center text-7xl">🙂</div>
+          <div className="text-slate mt-4">Look at the camera to check in.</div>
+          <button onClick={()=>{ if(adults.length) identify(adults[Math.floor(Math.random()*adults.length)]); }} className="mt-5 bg-crimson text-white rounded-2xl px-6 py-3 text-base font-semibold active:scale-[.98] transition">Simulate face scan</button>
+          <div className="text-[12px] text-slate/50 mt-4 max-w-[420px] mx-auto">Opt-in, adults only. On-device match · encrypted · kids use PIN or QR.</div>
+        </div>}
+
+        {method==='dropin' && <DropIn onCheckIn={checkIn} onCancel={()=>{setMethod(HOME);reset();}}/>}
+        </div>
+      </div>
+
+      {/* recent strip */}
+      <div className="border-t border-slate/10 px-4 sm:px-6 md:px-10 py-2.5 md:py-3 flex items-center gap-2 text-xs md:text-sm text-slate shrink-0">
+        {recent.length>0 && <span className="hidden sm:inline shrink-0">Just checked in:</span>}
+        <div className="flex gap-2 overflow-x-auto flex-1 min-w-0">{recent.length
+          ? recent.map((n,i)=><span key={i} className="bg-mist rounded-full px-3 py-1 whitespace-nowrap">{n}</span>)
+          : <span className="text-slate/60 whitespace-nowrap">No check-ins yet today</span>}</div>
+        {cloud&&cloud.queued>0&&cloud.online!==true && <span className="shrink-0 text-[11px] text-slate bg-mist rounded-full px-2.5 py-1"><span className="hidden md:inline">☁ {cloud.queued} check-in{cloud.queued===1?'':'s'} will upload when internet is back</span><span className="md:hidden">☁ {cloud.queued} waiting</span></span>}
+        {/* Build stamp is a staging debugging aid — a member at the front desk should
+            never be shown a version number. */}
+        {IS_STAGING && window.__CP_BUILD && <span className="text-[11px] text-slate/50 shrink-0">build {window.__CP_BUILD}</span>}
+      </div>
+
+      {/* class picker — more than one class open for this member */}
+      {picking && <div className="absolute inset-0 bg-ink/92 backdrop-blur-sm grid place-items-center overflow-y-auto p-5 md:p-8 pop">
+        <div className="w-full max-w-[460px]">
+          <div className="text-center mb-5"><div className="text-2xl font-extrabold">Hi, {picking.m.n.split(' ')[0]}! 🥋</div><div className="text-slate mt-1">Which class are you here for?</div></div>
+          <div className="space-y-3">{picking.opts.map(c=>{const late=isLate(c);
+            return <button key={c.id} onClick={()=>checkIn(picking.m,c)} className="w-full flex items-center justify-between bg-mist hover:bg-crimson hover:text-white rounded-2xl px-5 py-4 text-left transition group">
+              <div><div className="text-lg font-bold">{c.name}</div><div className="text-sm text-slate group-hover:text-white/70">{c.time} · {c.coach}</div></div>
+              <span className={"text-xs font-semibold px-2.5 py-1 rounded-full "+(late?'bg-warn/15 text-warn':relText(c)==='on now'?'bg-good/15 text-good':'bg-navy/10 text-navy group-hover:bg-white/20 group-hover:text-white')}>{relText(c)}</span>
+            </button>;})}</div>
+          <button onClick={()=>setPicking(null)} className="mt-5 w-full text-slate hover:text-navy text-sm py-2">Cancel</button>
+        </div>
+      </div>}
+
+      {/* nothing open right now */}
+      {noClass && <div className="absolute inset-0 bg-ink/92 backdrop-blur-sm grid place-items-center overflow-y-auto p-5 md:p-8 pop text-center">
+        <div className="max-w-[440px]">
+          <div className="w-20 h-20 rounded-full bg-warn/15 text-warn grid place-items-center text-4xl mx-auto mb-4">🕐</div>
+          <div className="text-2xl font-extrabold">No class to check into right now</div>
+          <div className="text-slate mt-2">Hi {noClass.m.n.split(' ')[0]} — there's no {progOf(noClass.m).toLowerCase()==='kids'?'kids ':''}class open at {NOW_LABEL}.</div>
+          {noClass.near && <div className="mt-4 bg-mist rounded-2xl px-5 py-4 text-left"><div className="text-xs text-slate uppercase tracking-wide">Nearest {progOf(noClass.m)} class</div><div className="font-bold text-lg mt-0.5">{noClass.near.name}</div><div className="text-sm text-slate">{noClass.near.time} · {relText(noClass.near)}</div></div>}
+          <div className="flex gap-2 mt-5">
+            <button onClick={()=>setNoClass(null)} className="flex-1 border border-white/15 rounded-2xl py-3 font-semibold text-slate hover:bg-white/5">Back</button>
+            {noClass.near && <button onClick={()=>checkIn(noClass.m,noClass.near)} className="flex-1 bg-crimson text-white rounded-2xl py-3 font-semibold">Check in anyway</button>}
+          </div>
+          <div className="text-[12px] text-slate/50 mt-4">The front desk can help if you're here for something else.</div>
+        </div>
+      </div>}
+
+      {/* success overlay */}
+      {done && <div className="absolute inset-0 bg-white grid place-items-center text-center overflow-y-auto p-5 md:p-8 pop" onClick={()=>setDone(null)}>
+        <div className="max-w-[620px]">
+          <div className={"w-20 h-20 md:w-28 md:h-28 rounded-full text-white grid place-items-center text-4xl md:text-6xl mx-auto mb-4 md:mb-5 "+(done.late?'bg-warn':'bg-good')}>✓</div>
+          <div className="text-2xl md:text-4xl font-extrabold">{done.dropIn
+            ? 'Welcome'+(done.firstVisit?'':' back')+' to Cia Paulista, '+done.m.n.split(' ')[0]+'! 🥋'
+            : 'Welcome back, '+done.m.n.split(' ')[0]+'! 🥋'}</div>
+          <div className="mt-2"><Belt belt={done.m.belt} str={done.m.str}/></div>
+          {done.dropIn && done.gym && <div className="text-slate text-sm mt-1">Visiting from {done.gym}</div>}
+          {done.cls
+            ? <div className="text-slate mt-4 text-lg">Checked in to <b className="text-navy">{done.cls.name}</b><div className="text-slate">{done.cls.time} · {done.cls.coach}</div></div>
+            : <div className="text-slate mt-4 text-lg">You're checked in.</div>}
+          {done.dropIn && <div className="mt-3">{done.fee>0
+            ? <span className="inline-block bg-warn/15 text-warn font-semibold text-sm rounded-full px-3 py-1">${done.fee} drop-in — pay at the front desk</span>
+            : <span className="inline-block bg-good/15 text-good font-semibold text-sm rounded-full px-3 py-1">Open Mat drop-in — free 🎉</span>}</div>}
+          {done.late && <div className="mt-3 inline-block bg-warn/15 text-warn font-semibold text-sm rounded-full px-3 py-1">⏱️ {done.lateMin} min late — logged for the instructor</div>}
+          <div className="text-[12px] text-slate/50 mt-6">Tap anywhere to continue</div>
+        </div>
+      </div>}
+
+      {/* ☁ cloud connect — front-desk panel, topmost; never blocks member check-ins for long */}
+      {cloudOpen && <CloudPanel onClose={()=>setCloudOpen(false)}/>}
+      {/* ✉ member invite — front-desk panel, topmost */}
+      {inviteOpen && <InvitePanel onClose={()=>setInviteOpen(false)}/>}
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+// The help tour must describe what this tablet can actually do. On a live kiosk the
+// PIN pad and Face check-in aren't switched on, so the tour doesn't promise them.
+if(window.Onboarding) Onboarding.init(IS_LIVE ? {
+  key:'cp_onb_kiosk',
+  accent:'#E11D2A',
+  title:'Check in for class',
+  subtitle:'Two quick ways to check in.',
+  bullets:['Scan your personal QR code','Or find your name in the list','Visiting? Tap Drop-in'],
+  tour:[
+    {sel:'#method-qr',     title:'Scan your QR', body:'Tap QR, then hold your personal member QR code up to the tablet camera.', place:'bottom'},
+    {sel:'#method-name',   title:'Or use your name', body:'Tap Name and start typing — tap yourself in the list to check in.', place:'bottom'},
+    {sel:'#method-dropin', title:'Visiting for the day?', body:'Tap Drop-in. We’ll take a few details and your waiver, then you’re on the mat.', place:'bottom'}
+  ],
+  helpLabel:'How to check in',
+  helpPosition:'top-right'
+} : {
+  key:'cp_onb_kiosk',
+  accent:'#E11D2A',
+  title:'Check in for class',
+  subtitle:'Three quick ways to check in.',
+  bullets:['Tap your name or enter your PIN','Scan your personal QR code','Adults: use Face check-in'],
+  tour:[
+    {sel:'#method-name', title:'Name or PIN', body:'Tap Name to find yourself in the list, or use PIN to type your 4-digit code.', place:'bottom'},
+    {sel:'#method-qr',   title:'Scan your QR', body:'Tap QR, then hold your personal member QR code up to the tablet camera.', place:'bottom'},
+    {sel:'#method-face', title:'Face check-in', body:'Adults can tap Face and simply look at the camera. Opt-in and on-device.', place:'bottom'}
+  ],
+  helpLabel:'How to check in',
+  helpPosition:'top-right'
+});
+</script>
+</body>
+</html>

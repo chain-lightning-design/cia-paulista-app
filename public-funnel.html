@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="public-funnel.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='live'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the chat composer) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Cia Paulista — Public Site &amp; Free-Trial Funnel</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<script src="env.js"></script>
+<script src="vendor/tailwind.js"></script>
+<script>
+  /* Tatame dark theme — palette remapped to match the Owner Console.
+     navy is repurposed as the LIGHT heading/text token; solid navy backgrounds
+     are re-tinted to neutral #2A2A2F via the .tatame override layer below. */
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#F3F3F5', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', teal:'#38BDF8', ink:'#0B0B0D', surface:'#151517'
+  }, fontFamily:{ display:['"Barlow Condensed"','ui-sans-serif','system-ui','sans-serif'] } }}}
+</script>
+<style>
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* The site renders RAW into the page — it is the page. There is no browser-chrome
+     frame and no device toggle; width comes from the real viewport, so every section's
+     own sm:/md:/lg: breakpoints do the responsive work. */
+  .site::-webkit-scrollbar{width:9px}.site::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:9px}
+  /* viewport-fit=cover puts content under the landscape notch "ears" on iOS, so the
+     site container clears them. Both insets are 0px in portrait — no visual change. */
+  #site{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+  /* Free-trial funnel modal: vh counts the area behind Safari's chrome, so a vh-sized
+     modal runs off the bottom on iOS. dvh tracks the VISIBLE viewport; the backdrop
+     padding keeps the panel clear of the notch and the home indicator. */
+  .funnel-backdrop{padding:max(1rem,env(safe-area-inset-top,0px)) max(1rem,env(safe-area-inset-right,0px)) max(1rem,env(safe-area-inset-bottom,0px)) max(1rem,env(safe-area-inset-left,0px))}
+  .funnel-shell{max-height:92vh}
+  .funnel-body{max-height:62vh}
+  @supports (height:100dvh){ .funnel-shell{max-height:92dvh} .funnel-body{max-height:62dvh} }
+  .pressable{transition:transform .06s} .pressable:active{transform:scale(.97)}
+  .fade{animation:fade .25s ease-out}@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .pop{animation:pop .22s cubic-bezier(.2,.9,.3,1.2)}@keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+  .slidein{animation:slin .3s ease-out}@keyframes slin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+  /* grid texture layered ON TOP of the dark gradient — first-listed background paints on top */
+  .hero-bg{
+    background:
+      linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),
+      radial-gradient(120% 90% at 85% 15%, rgba(225,29,42,.22) 0%, transparent 55%),
+      linear-gradient(135deg,#151517 0%,#0B0B0D 55%,#1a0a0c 100%);
+    background-size:38px 38px,38px 38px,cover,cover;
+  }
+  .acc-body{overflow:hidden;max-height:0;transition:max-height .28s ease}
+  .acc-body.open{max-height:340px}
+  .scrollx::-webkit-scrollbar{display:none}
+  details>summary{list-style:none}details>summary::-webkit-details-marker{display:none}
+  .map-bg{background:
+    radial-gradient(circle at 30% 40%, rgba(225,29,42,.16), transparent 40%),
+    repeating-linear-gradient(0deg,#151517,#151517 22px,#1c1c20 22px,#1c1c20 23px),
+    repeating-linear-gradient(90deg,#101012,#101012 30px,#17171a 30px,#17171a 31px)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:#E11D2A;box-shadow:0 0 0 3px rgba(225,29,42,.20)}
+  .chip{cursor:pointer;transition:all .12s}
+  /* inline working-state spinner (submit button) */
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:999px;animation:spn .7s linear infinite;vertical-align:-2px}
+  @keyframes spn{to{transform:rotate(360deg)}}
+
+  /* ===== Tatame — dark performance theme override layer =====
+     Flips the light utility classes the markup uses onto the dark palette,
+     scoped to .tatame so specificity beats Tailwind's base utilities.
+     Structure/behavior untouched — visual reskin only. */
+  .tatame{background:#0B0B0D;color:#F3F3F5}
+  .tatame .bg-white{background:#151517}                         /* cards / nav / modals / site + frame surfaces */
+  .tatame .bg-white\/95{background:rgba(21,21,23,.95)}          /* sticky nav + map label (solid-ish white surfaces) */
+  .tatame .bg-navy{background:#2A2A2F}                          /* solid neutral bands / buttons / pills / toast */
+  .tatame .bg-navy\/80{background:#2A2A2F}                      /* waitlist button */
+  .tatame .text-ink{color:#F3F3F5}                              /* body/card copy that was dark-on-light -> light */
+  .tatame input,.tatame select,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+</style>
+</head>
+<body class="tatame min-h-screen text-ink" style="background:linear-gradient(135deg,#0B0B0D,#151517)">
+
+<!-- ===== The public site IS the page — rendered raw, full-bleed, no frame ===== -->
+<div id="site" class="site bg-white"></div>
+
+<!-- overlay host for modals/funnel -->
+<div id="overlay"></div>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-[120] hidden pointer-events-none"></div>
+
+<!-- shared live data layer (fail-soft: the page works identically without cloud) -->
+<script src="vendor/supabase.js"></script>
+<script src="data.js"></script>
+
+<!-- shared onboarding engine (loaded before the app's init call below) -->
+<script src="onboarding.js"></script>
+
+<script>
+/* ============================== environment ==============================
+   This is the PUBLIC page: strangers read it and type their name, phone and email into it.
+   So it is the page with the least room for demo fiction. LIVE never says "prototype",
+   never explains this project to a prospect, never claims a text was sent by software that
+   can't send one, and never shows a link that goes nowhere. STAGING keeps the demo tools
+   (leads board + reset) that make the walkthrough worth doing — labelled, inside the page. */
+const IS_LIVE    = (()=>{ try{ return !!(window.CP && window.CP.env && window.CP.env.isLive); }catch(e){ return false; } })();
+const IS_STAGING = (()=>{ try{ return !!(window.CP && window.CP.env && window.CP.env.isStaging); }catch(e){ return false; } })();
+
+/* ============================== helpers ============================== */
+const esc=s=>(''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const site=$('#site'), overlay=$('#overlay');
+const digits=s=>(''+s).replace(/\D/g,'');
+const validEmail=s=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* ============================== data ============================== */
+const PROGRAMS=[
+  {id:'adult-gi', icon:'🥋', name:'Adults — Gi', tag:'Brazilian Jiu-Jitsu in the kimono',
+   interest:'Adult — Gi', blurb:'Traditional gi grappling. Leverage, grips and technique over strength — the heart of BJJ. All levels welcome, no experience needed.',
+   points:['Fundamentals & all-levels classes daily','Build real self-defense from day one','White-to-black belt curriculum'], ages:'Adults 15+'},
+  {id:'adult-nogi', icon:'🤼', name:'Adults — No-Gi', tag:'Fast, athletic submission grappling',
+   interest:'Adult — No-Gi', blurb:'No kimono — shorts and rashguard. Faster pace, modern submission grappling and wrestling. Great cardio and a perfect complement to your gi game.',
+   points:['Morning & evening sessions','Wrestling & leg-lock systems','Open mat every Saturday'], ages:'Adults 15+'},
+  {id:'kids', icon:'🧒', name:'Kids Program', tag:'Confidence, discipline & anti-bullying',
+   interest:'Kids', blurb:'Age-grouped classes that build focus, respect and real skills in a safe, encouraging environment. Little Tigers (4–7) and Juniors (8–13).',
+   points:['Little Tigers 4–7 · Juniors 8–13','Anti-bullying & confidence focus','Belt-stripe progression kids love'], ages:'Ages 4–13'},
+  {id:'private', icon:'🎯', name:'Private Lessons', tag:'One-on-one with a black belt',
+   interest:'Private lessons', blurb:'Accelerate with focused 1:1 coaching tailored to your goals — competition prep, a specific position, or a faster start as a beginner.',
+   points:['Flexible scheduling','Personalized game plan','Competition & beginner tracks'], ages:'All ages'},
+  {id:'competition', icon:'🏆', name:'Competition Team', tag:'For those chasing the podium',
+   interest:'Competition team', blurb:'Invite-and-tryout team for members training to compete. Extra sparring rounds, strategy, and travel to IBJJF and local tournaments.',
+   points:['Dedicated competition classes','Coaching corner at events','Strength & conditioning add-on'], ages:'By assessment'},
+];
+const programById=id=>PROGRAMS.find(p=>p.id===id);
+
+// weekly schedule template: dow 0=Sun..6=Sat
+const WEEK=[
+  {dow:1,t:'06:00',dur:60,name:'No-Gi',prog:'adult-nogi',coach:'Prof. Diego',level:'All levels',cap:24,base:9},
+  {dow:1,t:'12:00',dur:60,name:'Gi Fundamentals',prog:'adult-gi',coach:'Prof. Sarah',level:'Beginner',cap:20,base:11},
+  {dow:1,t:'16:30',dur:45,name:'Kids · Little Tigers',prog:'kids',coach:'Prof. Sarah',level:'Ages 4–7',cap:16,base:5},
+  {dow:1,t:'18:30',dur:75,name:'Gi — All Levels',prog:'adult-gi',coach:'Prof. Marcelo',level:'All levels',cap:30,base:6},
+  {dow:2,t:'12:00',dur:60,name:'Gi Fundamentals',prog:'adult-gi',coach:'Prof. Sarah',level:'Beginner',cap:20,base:8},
+  {dow:2,t:'16:30',dur:45,name:'Kids · Juniors',prog:'kids',coach:'Prof. Sarah',level:'Ages 8–13',cap:16,base:7},
+  {dow:2,t:'18:30',dur:60,name:'No-Gi',prog:'adult-nogi',coach:'Prof. Diego',level:'All levels',cap:24,base:0},
+  {dow:3,t:'06:00',dur:60,name:'Gi — All Levels',prog:'adult-gi',coach:'Prof. Marcelo',level:'All levels',cap:30,base:13},
+  {dow:3,t:'12:00',dur:60,name:'Gi Fundamentals',prog:'adult-gi',coach:'Prof. Sarah',level:'Beginner',cap:20,base:8},
+  {dow:3,t:'16:30',dur:45,name:'Kids · Little Tigers',prog:'kids',coach:'Prof. Sarah',level:'Ages 4–7',cap:16,base:4},
+  {dow:3,t:'18:30',dur:75,name:'Gi — All Levels',prog:'adult-gi',coach:'Prof. Marcelo',level:'All levels',cap:30,base:4},
+  {dow:4,t:'06:00',dur:60,name:'No-Gi',prog:'adult-nogi',coach:'Prof. Diego',level:'All levels',cap:24,base:14},
+  {dow:4,t:'16:30',dur:45,name:'Kids · Juniors',prog:'kids',coach:'Prof. Sarah',level:'Ages 8–13',cap:16,base:9},
+  {dow:4,t:'18:30',dur:60,name:'No-Gi',prog:'adult-nogi',coach:'Prof. Diego',level:'All levels',cap:24,base:7},
+  {dow:5,t:'12:00',dur:60,name:'Gi — All Levels',prog:'adult-gi',coach:'Prof. Marcelo',level:'All levels',cap:30,base:10,full:true},
+  {dow:5,t:'17:30',dur:60,name:'Competition Training',prog:'competition',coach:'Prof. Diego',level:'Team',cap:20,base:6},
+  {dow:6,t:'09:00',dur:60,name:'Kids · Open Mat',prog:'kids',coach:'Prof. Sarah',level:'All kids',cap:20,base:12},
+  {dow:6,t:'10:00',dur:90,name:'Open Mat',prog:'adult-nogi',coach:'Coaches on duty',level:'All levels',cap:40,base:30},
+];
+const fmtTime=t=>{let[h,m]=t.split(':').map(Number);const ap=h<12?'AM':'PM';let hh=h%12;if(hh===0)hh=12;return hh+':'+(m<10?'0'+m:m)+' '+ap;};
+
+// generate upcoming dated sessions (next ~12 days)
+function upcomingSessions(filterProg){
+  const now=new Date(); const out=[]; let id=0;
+  for(let d=0; d<13 && out.length<60; d++){
+    const day=new Date(now.getFullYear(),now.getMonth(),now.getDate()+d);
+    const dow=day.getDay();
+    WEEK.filter(w=>w.dow===dow).forEach(w=>{
+      // deterministic-ish spots: vary base by day offset
+      let spots=Math.max(0, w.base + ((d*3 + w.dow*2)%7) - 3);
+      if(w.base===0 || w.full) spots=0; // popular classes that run full → surface the waitlist path
+      const [h,m]=w.t.split(':').map(Number);
+      // skip sessions already passed today
+      if(d===0 && (h<now.getHours() || (h===now.getHours()&&m<=now.getMinutes()))) return;
+      const s={id:'s'+(id++), date:day, dow, t:w.t, dur:w.dur, name:w.name, prog:w.prog, coach:w.coach, level:w.level, cap:w.cap, spots, dayoff:d};
+      if(!filterProg || filterProg==='all' || matchProg(w.prog,filterProg)) out.push(s);
+    });
+  }
+  return out;
+}
+function matchProg(prog,filter){
+  if(filter==='all') return true;
+  if(filter==='adults') return prog==='adult-gi'||prog==='adult-nogi'||prog==='competition';
+  if(filter==='kids') return prog==='kids';
+  return prog===filter;
+}
+const dateLabel=(dt,off)=> off===0?'Today':off===1?'Tomorrow':DOW[dt.getDay()]+' '+MON[dt.getMonth()]+' '+dt.getDate();
+
+const PLANS=[
+  {id:'kids', name:'Kids Unlimited', mo:130, who:'Ages 4–13', feats:['Unlimited kids classes','Belt-stripe progression','Free uniform to start'], pop:false},
+  {id:'unlimited', name:'Adult Unlimited', mo:165, who:'Most popular', feats:['Unlimited gi & no-gi','Open mat access','Free intro private lesson','Bring-a-friend passes'], pop:true},
+  {id:'2x', name:'Adult 2× / week', mo:120, who:'Train part-time', feats:['Any 2 classes per week','Open mat access','Upgrade anytime'], pop:false},
+];
+const annual=mo=>Math.round(mo*10); // ~2 months free
+
+const COACHES=[
+  {n:'Prof. Marcelo Souza', belt:'Black belt · 3rd degree', bz:'Head instructor & owner. 22 years on the mats, IBJJF medalist, lineage under Cia Paulista São Paulo.', c:'#E11D2A'},
+  {n:'Prof. Diego Ramos', belt:'Black belt · 1st degree', bz:'No-gi & competition lead. Pan-Ams medalist, leg-lock specialist, runs the comp team.', c:'#2F4A6B'},
+  {n:'Prof. Sarah Lin', belt:'Black belt', bz:'Kids program director. Background in education; builds confidence, focus and discipline in every class.', c:'#8E2F52'},
+];
+const REVIEWS=[
+  {n:'Emma N.', r:5, prog:'Adult — Gi & No-Gi', q:'Walked in for the free trial terrified, walked out hooked. Six months later it’s the best part of my week. The coaches actually teach.'},
+  {n:'Marco D.', r:5, prog:'Adult — No-Gi', q:'Down 18 lbs and I finally found training I look forward to. The morning no-gi class is no-ego and welcoming.'},
+  {n:'Nina P.', r:5, prog:'Kids', q:'My 9-year-old went from shy to confident in two months. Prof. Sarah is incredible with the kids.'},
+  {n:'Andre L.', r:5, prog:'Adult — Gi', q:'Tried three other gyms in the valley. Cia Paulista’s instruction and community are on another level.'},
+  {n:'Kelly W.', r:4, prog:'Adult — Gi', q:'Clean mats, structured curriculum, real fundamentals. Saturday open mat is the highlight of my week.'},
+];
+const FAQ=[
+  ['Is the free trial really free?','Yes — your first class is completely free, no card required and no obligation. We’ll have a loaner gi ready and a coach will walk you through everything.'],
+  ['I’ve never trained before — is that okay?','Absolutely. Most people who walk in have zero experience. Our Fundamentals and All-Levels classes are built for brand-new beginners, and you’ll be paired with people who’ll look after you.'],
+  ['What should I wear and bring?','For your first class just bring comfortable athletic clothes (shorts/t-shirt or leggings), a water bottle, and flip-flops for off the mat. We’ll lend you a gi if you’re trying a gi class.'],
+  ['How old does my child need to be?','We take kids from age 4. Little Tigers is 4–7 and Juniors is 8–13. Trials for kids are free too — parents are welcome to watch from the lobby.'],
+  ['Do I need to be fit to start?','No. Jiu-jitsu will get you in shape, not the other way around. You set the pace, and you can sit out any round. Plenty of members started with zero fitness background.'],
+  ['How much does membership cost after the trial?','Adult Unlimited is $165/mo, a 2×/week plan is $120/mo, and Kids Unlimited is $130/mo. No long-term contract — month-to-month, cancel anytime. Family discounts available.'],
+  ['Where are you located?','819 S Myrtle Ave, Monrovia, CA 91016 — free parking in the rear lot. We’re a five-minute drive from Old Town Monrovia.'],
+  ['Can I freeze or cancel my membership?','Yes. Memberships are month-to-month. You can freeze for up to 3 months (travel, injury) or cancel anytime — no fees, handled right from your member app.'],
+];
+
+/* ============================== state ============================== */
+function fresh(){ return { leads:[], news:[] }; }
+let S; try{ S=JSON.parse(localStorage.getItem('cp_funnel_v1'))||fresh(); }catch(e){ S=fresh(); }
+if(!S.leads) S.leads=[]; if(!S.news) S.news=[];
+const save=()=>{ try{localStorage.setItem('cp_funnel_v1',JSON.stringify(S));}catch(e){} };
+
+/* ============================== toast ============================== */
+let toastT;
+function toast(html,kind='ok'){
+  const el=$('#toast'); const c=kind==='ok'?'bg-navy':'bg-crimson';
+  el.innerHTML='<div class="'+c+' text-white px-4 py-3 rounded-xl shadow-2xl text-sm flex items-center gap-2 pop">'+html+'</div>';
+  el.classList.remove('hidden'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.add('hidden'),3600);
+}
+
+/* ============================== section renderers ============================== */
+function navHTML(){
+  const links=[['#programs','Programs'],['#schedule','Schedule'],['#pricing','Pricing'],['#coaches','Coaches'],['#reviews','Reviews'],['#faq','FAQ']];
+  return `<header id="nav" class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate/10">
+    <div class="max-w-[1100px] mx-auto px-5 h-16 flex items-center justify-between">
+      <a data-scroll="#top" class="flex items-center gap-2.5 cursor-pointer">
+        <div class="w-9 h-9 rounded-lg bg-crimson grid place-items-center font-black text-white">CP</div>
+        <div class="leading-tight"><div class="font-extrabold text-navy">Cia Paulista</div><div class="text-[10px] tracking-wide text-slate uppercase">Jiu-Jitsu · Monrovia</div></div>
+      </a>
+      <nav class="hidden md:flex items-center gap-6 text-sm font-medium text-slate">
+        ${links.map(([h,l])=>`<a data-scroll="${h}" class="cursor-pointer hover:text-navy">${l}</a>`).join('')}
+      </nav>
+      <div class="hidden md:flex items-center gap-3">
+        <a href="tel:+16263949720" class="text-sm font-semibold text-navy hover:text-crimson">(626) 394-9720</a>
+        <button data-trial="nav" class="pressable bg-crimson text-white text-sm font-bold px-4 py-2 rounded-lg shadow">Book free trial</button>
+      </div>
+      <button id="hamb" class="md:hidden w-10 h-10 grid place-items-center text-2xl text-navy">☰</button>
+    </div>
+    <div id="mobnav" class="hidden md:hidden border-t border-slate/10 bg-white px-5 py-3 space-y-1">
+      ${links.map(([h,l])=>`<a data-scroll="${h}" class="block py-2 text-slate font-medium cursor-pointer">${l}</a>`).join('')}
+      <button data-trial="mobnav" class="w-full mt-2 bg-crimson text-white font-bold py-2.5 rounded-lg">Book free trial</button>
+    </div>
+  </header>`;
+}
+function heroHTML(){
+  return `<section id="top" class="hero-bg text-white relative">
+    <div class="max-w-[1100px] mx-auto px-5 py-16 md:py-24 grid md:grid-cols-2 gap-10 items-center">
+      <div class="fade">
+        <div class="inline-flex items-center gap-2 bg-white/10 border border-white/15 rounded-full px-3 py-1 text-xs font-semibold mb-5"><span class="text-gold">★★★★★</span> 4.9 · 320+ Google reviews</div>
+        <h1 class="text-4xl md:text-5xl font-extrabold leading-[1.05] mb-4">Your first class is <span class="text-gold">free.</span><br>Try Brazilian Jiu-Jitsu in Monrovia.</h1>
+        <p class="text-white/75 text-lg mb-7 max-w-md">World-class instruction for adults and kids — no experience, no contract, no pressure. Just show up and we’ll handle the rest.</p>
+        <div class="flex flex-wrap gap-3">
+          <button data-trial="hero" class="pressable bg-crimson hover:bg-crimson/90 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg text-lg">Book your free trial →</button>
+          <button data-scroll="#schedule" class="pressable bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold px-6 py-3.5 rounded-xl">View the schedule</button>
+        </div>
+        <div class="flex items-center gap-5 mt-7 text-sm text-white/70">
+          <span>✓ No card required</span><span>✓ Loaner gi provided</span><span>✓ All levels</span>
+        </div>
+      </div>
+      <div class="hidden md:block fade">
+        <div class="bg-white/8 border border-white/15 rounded-2xl p-6 backdrop-blur">
+          <div class="text-sm text-white/60 mb-3 font-semibold uppercase tracking-wide">Next beginner-friendly classes</div>
+          <div id="heroNext" class="space-y-2"></div>
+          <button data-trial="herocard" class="w-full mt-4 bg-gold text-[#0B0B0D] font-bold py-2.5 rounded-lg pressable">Grab a free trial spot</button>
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+function statsHTML(){
+  const stats=[['500+','active members'],['15 yrs','in Monrovia'],['4.9★','Google rating'],['12','classes / week']];
+  return `<section class="bg-navy text-white"><div class="max-w-[1100px] mx-auto px-5 py-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+    ${stats.map(([a,b])=>`<div><div class="text-2xl md:text-3xl font-extrabold text-gold">${a}</div><div class="text-xs text-white/70 uppercase tracking-wide">${b}</div></div>`).join('')}
+  </div></section>`;
+}
+function programsHTML(){
+  return `<section id="programs" class="max-w-[1100px] mx-auto px-5 py-16">
+    <div class="text-center mb-10"><div class="text-crimson font-bold uppercase tracking-wide text-sm">Programs</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold text-navy mt-1">Find the right mat for you</h2>
+      <p class="text-slate mt-2">Every program starts with a free trial. Tap any card to learn more.</p></div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      ${PROGRAMS.map(p=>`<div data-prog="${p.id}" class="prog-card chip group bg-white border border-slate/15 rounded-2xl p-6 hover:border-crimson hover:shadow-xl">
+        <div class="text-4xl mb-3">${p.icon}</div>
+        <div class="font-extrabold text-lg text-navy">${p.name}</div>
+        <div class="text-sm text-slate mt-1">${p.tag}</div>
+        <div class="text-xs text-slate/70 mt-3">${p.ages}</div>
+        <div class="mt-4 flex items-center gap-3 text-sm font-semibold">
+          <span class="text-crimson group-hover:underline">Learn more →</span>
+          <button data-trialprog="${p.id}" class="ml-auto text-navy hover:text-crimson">Try free</button>
+        </div>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+function scheduleHTML(){
+  return `<section id="schedule" class="bg-mist py-16"><div class="max-w-[1100px] mx-auto px-5">
+    <div class="text-center mb-8"><div class="text-crimson font-bold uppercase tracking-wide text-sm">Weekly schedule</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold text-navy mt-1">Drop into any class</h2>
+      <p class="text-slate mt-2">Pick a class below to claim a free-trial spot — we’ll save you a place.</p></div>
+    <div class="flex justify-center gap-2 mb-6">
+      ${[['all','All'],['adults','Adults'],['kids','Kids']].map(([k,l],i)=>`<button data-filter="${k}" class="filterbtn px-4 py-2 rounded-lg text-sm font-semibold ${i===0?'bg-navy text-white':'bg-white text-slate border border-slate/15'}">${l}</button>`).join('')}
+    </div>
+    <div id="schedGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <div class="text-center text-xs text-slate/70 mt-5">Showing the next several days · times in Pacific. Full classes can still be joined via waitlist.</div>
+  </div></section>`;
+}
+function schedCards(filter){
+  const ses=upcomingSessions(filter).slice(0,12);
+  if(!ses.length) return `<div class="col-span-full text-center text-slate py-8">No classes match that filter in the next few days.</div>`;
+  return ses.map(s=>{
+    const full=s.spots<=0; const low=s.spots>0&&s.spots<=4; const pg=programById(s.prog);
+    return `<div class="bg-white rounded-xl border border-slate/15 p-4 flex flex-col">
+      <div class="flex items-start justify-between">
+        <div><div class="font-bold text-navy">${esc(s.name)}</div>
+          <div class="text-xs text-slate mt-0.5">${dateLabel(s.date,s.dayoff)} · ${fmtTime(s.t)}</div></div>
+        <span class="text-lg">${pg?pg.icon:'🥋'}</span>
+      </div>
+      <div class="text-xs text-slate/80 mt-2">${esc(s.coach)} · ${esc(s.level)}</div>
+      <div class="mt-3 flex items-center gap-2">
+        ${full?`<span class="text-xs font-semibold text-crimson bg-crimson/10 px-2 py-1 rounded">Class full</span>`
+              :`<span class="text-xs font-semibold ${low?'text-gold bg-gold/15':'text-good bg-good/10'} px-2 py-1 rounded">${s.spots} spot${s.spots>1?'s':''} left</span>`}
+      </div>
+      <button data-booksession="${s.id}" data-prog="${s.prog}" class="mt-4 w-full ${full?'bg-navy/80':'bg-crimson'} text-white text-sm font-bold py-2 rounded-lg pressable">${full?'Join waitlist':'Book free trial'}</button>
+    </div>`;
+  }).join('');
+}
+function pricingHTML(){
+  return `<section id="pricing" class="max-w-[1100px] mx-auto px-5 py-16">
+    <div class="text-center mb-8"><div class="text-crimson font-bold uppercase tracking-wide text-sm">Membership</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold text-navy mt-1">Simple, honest pricing</h2>
+      <p class="text-slate mt-2">No contracts. Cancel anytime. But start free — no card needed for your trial.</p></div>
+    <div class="flex justify-center mb-8"><div class="bg-mist rounded-lg p-1 flex text-sm font-semibold">
+      <button data-bill="mo" class="billbtn px-4 py-2 rounded-md bg-white shadow text-navy">Monthly</button>
+      <button data-bill="yr" class="billbtn px-4 py-2 rounded-md text-slate">Annual <span class="text-good">· save ~17%</span></button>
+    </div></div>
+    <div id="planGrid" class="grid sm:grid-cols-3 gap-5 items-stretch"></div>
+    <p class="text-center text-xs text-slate/70 mt-5">Family discount: 10% off each additional family member. Prices shown are per member.</p>
+  </section>`;
+}
+function planCards(bill){
+  return PLANS.map(p=>{
+    const price=bill==='yr'?annual(p.mo):p.mo; const per=bill==='yr'?'/yr':'/mo';
+    return `<div class="relative bg-white rounded-2xl border ${p.pop?'border-crimson shadow-xl':'border-slate/15'} p-6 flex flex-col">
+      ${p.pop?`<div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-crimson text-white text-xs font-bold px-3 py-1 rounded-full">★ Most popular</div>`:''}
+      <div class="font-extrabold text-lg text-navy">${p.name}</div>
+      <div class="text-xs text-slate">${p.who}</div>
+      <div class="mt-4 mb-1"><span class="text-4xl font-extrabold text-navy">$${price}</span><span class="text-slate text-sm">${per}</span></div>
+      ${bill==='yr'?`<div class="text-xs text-good font-semibold">≈ 2 months free vs monthly</div>`:`<div class="text-xs text-slate/60">month-to-month</div>`}
+      <ul class="mt-4 space-y-2 text-sm text-ink flex-1">${p.feats.map(f=>`<li class="flex gap-2"><span class="text-good">✓</span>${f}</li>`).join('')}</ul>
+      <button data-trialplan="${p.id}" class="mt-5 w-full ${p.pop?'bg-crimson':'bg-navy'} text-white font-bold py-2.5 rounded-lg pressable">Start with a free trial</button>
+    </div>`;
+  }).join('');
+}
+function coachesHTML(){
+  return `<section id="coaches" class="bg-navy text-white py-16"><div class="max-w-[1100px] mx-auto px-5">
+    <div class="text-center mb-10"><div class="text-gold font-bold uppercase tracking-wide text-sm">Your coaches</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold mt-1">Learn from black belts</h2></div>
+    <div class="grid sm:grid-cols-3 gap-5">
+      ${COACHES.map((c,i)=>`<div class="bg-white/8 border border-white/12 rounded-2xl p-6 text-center">
+        <div class="w-20 h-20 rounded-full mx-auto grid place-items-center text-2xl font-black text-white" style="background:${c.c}">${esc(c.n.split(' ')[1][0])}</div>
+        <div class="font-bold text-lg mt-4">${esc(c.n)}</div>
+        <div class="text-gold text-sm font-semibold">${esc(c.belt)}</div>
+        <p class="text-white/70 text-sm mt-3">${esc(c.bz)}</p>
+      </div>`).join('')}
+    </div>
+  </div></section>`;
+}
+function reviewsHTML(){
+  return `<section id="reviews" class="max-w-[1100px] mx-auto px-5 py-16">
+    <div class="text-center mb-8"><div class="text-crimson font-bold uppercase tracking-wide text-sm">Reviews</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold text-navy mt-1">Loved by Monrovia</h2>
+      <div class="text-slate mt-2">4.9 average from 320+ verified reviews</div></div>
+    <div class="relative bg-mist rounded-2xl p-8 md:p-12 text-center min-h-[220px] flex flex-col justify-center">
+      <div id="reviewBody"></div>
+      <div class="flex items-center justify-center gap-3 mt-6">
+        <button id="revPrev" class="w-10 h-10 rounded-full bg-white border border-slate/15 text-navy text-lg pressable">‹</button>
+        <div id="revDots" class="flex gap-1.5"></div>
+        <button id="revNext" class="w-10 h-10 rounded-full bg-white border border-slate/15 text-navy text-lg pressable">›</button>
+      </div>
+    </div>
+  </section>`;
+}
+function faqHTML(){
+  return `<section id="faq" class="bg-mist py-16"><div class="max-w-[760px] mx-auto px-5">
+    <div class="text-center mb-8"><div class="text-crimson font-bold uppercase tracking-wide text-sm">Questions</div>
+      <h2 class="text-3xl md:text-4xl font-extrabold text-navy mt-1">Frequently asked</h2></div>
+    <div class="space-y-3">
+      ${FAQ.map((f,i)=>`<div class="bg-white rounded-xl border border-slate/15 overflow-hidden">
+        <button data-faq="${i}" class="faq-q w-full text-left px-5 py-4 flex items-center justify-between gap-4 font-semibold text-navy">
+          <span>${esc(f[0])}</span><span class="faq-ic text-crimson text-xl transition-transform">+</span></button>
+        <div class="acc-body" id="faq-${i}"><div class="px-5 pb-4 text-sm text-slate">${esc(f[1])}</div></div>
+      </div>`).join('')}
+    </div>
+    <div class="text-center mt-8 text-slate text-sm">Still have a question? <a href="tel:+16263949720" class="text-crimson font-semibold">Call (626) 394-9720</a> or <a data-scroll="#contact" class="text-crimson font-semibold cursor-pointer underline">message us below</a>.</div>
+  </div></section>`;
+}
+function ctaHTML(){
+  return `<section class="hero-bg text-white"><div class="max-w-[1100px] mx-auto px-5 py-16 text-center">
+    <h2 class="text-3xl md:text-4xl font-extrabold mb-3">Ready to roll? Your first class is on us.</h2>
+    <p class="text-white/75 mb-7 max-w-xl mx-auto">Pick a class, tell us a little about you, and walk in. No experience, no card, no pressure.</p>
+    <button data-trial="cta" class="pressable bg-gold text-[#0B0B0D] font-extrabold px-8 py-4 rounded-xl shadow-lg text-lg">Claim my free trial →</button>
+  </div></section>`;
+}
+function contactHTML(){
+  return `<section id="contact" class="max-w-[1100px] mx-auto px-5 py-16 grid md:grid-cols-2 gap-10">
+    <div>
+      <div class="text-crimson font-bold uppercase tracking-wide text-sm">Visit us</div>
+      <h2 class="text-3xl font-extrabold text-navy mt-1 mb-4">819 S Myrtle Ave, Monrovia</h2>
+      <ul class="space-y-2 text-slate text-sm mb-5">
+        <li>📍 819 S Myrtle Ave, Monrovia, CA 91016</li>
+        <li>📞 <a href="tel:+16263949720" class="text-navy font-semibold hover:text-crimson">(626) 394-9720</a></li>
+        <li>✉️ <a href="mailto:hello@ciapaulistajj.com" class="text-navy font-semibold hover:text-crimson">hello@ciapaulistajj.com</a></li>
+        <li>🅿️ Free parking in the rear lot</li>
+      </ul>
+      <div class="text-sm text-slate mb-2 font-semibold">Front-desk hours</div>
+      <div class="text-sm text-slate grid grid-cols-2 gap-x-6 gap-y-1 max-w-xs">
+        <span>Mon–Fri</span><span>9:00a – 9:00p</span><span>Saturday</span><span>8:00a – 1:00p</span><span>Sunday</span><span>Closed</span>
+      </div>
+      <div class="mt-6 p-4 bg-mist rounded-xl">
+        <div class="font-semibold text-navy text-sm mb-2">📩 Get the weekly schedule + offers</div>
+        <form id="newsForm" novalidate class="flex gap-2">
+          <input id="newsEmail" type="email" placeholder="you@email.com" class="flex-1 border border-slate/25 rounded-lg px-3 py-2 text-sm"/>
+          <button class="bg-navy text-white text-sm font-semibold px-4 rounded-lg pressable">Subscribe</button>
+        </form>
+        <div id="newsMsg" class="text-xs mt-2"></div>
+      </div>
+    </div>
+    <div>
+      <a href="https://maps.google.com/?q=819+S+Myrtle+Ave+Monrovia+CA+91016" target="_blank" class="block relative rounded-2xl overflow-hidden border border-slate/15 h-[300px] map-bg pressable">
+        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full text-4xl drop-shadow">📍</div>
+        <div class="absolute bottom-3 left-3 bg-white/95 rounded-lg px-3 py-2 text-xs"><div class="font-bold text-navy">Cia Paulista Jiu-Jitsu</div><div class="text-slate">819 S Myrtle Ave · Open in Maps ↗</div></div>
+      </a>
+      <button data-trial="contact" class="w-full mt-4 bg-crimson text-white font-bold py-3 rounded-xl pressable">Book a free trial instead →</button>
+    </div>
+  </section>`;
+}
+function footerHTML(){
+  return `<footer class="bg-ink text-white/70 text-sm"><div class="max-w-[1100px] mx-auto px-5 py-10 grid sm:grid-cols-3 gap-8">
+    <div><div class="flex items-center gap-2 mb-3"><div class="w-8 h-8 rounded-lg bg-crimson grid place-items-center font-black text-white text-xs">CP</div><span class="font-bold text-white">Cia Paulista Jiu-Jitsu</span></div>
+      <p class="text-xs text-white/50">Brazilian Jiu-Jitsu for adults and kids in Monrovia, CA. Train with black belts. Start free.</p>
+      ${IS_LIVE?'':`<div class="flex gap-3 mt-4 text-lg">
+        <a data-social="Instagram" class="cursor-pointer hover:text-white">📷</a><a data-social="Facebook" class="cursor-pointer hover:text-white">📘</a><a data-social="YouTube" class="cursor-pointer hover:text-white">▶️</a>
+      </div>`}</div>
+    <div><div class="font-semibold text-white mb-3">Explore</div>
+      <ul class="space-y-1.5 text-xs">
+        <li><a data-scroll="#programs" class="cursor-pointer hover:text-white">Programs</a></li>
+        <li><a data-scroll="#schedule" class="cursor-pointer hover:text-white">Schedule</a></li>
+        <li><a data-scroll="#pricing" class="cursor-pointer hover:text-white">Pricing</a></li>
+        <li><a data-scroll="#faq" class="cursor-pointer hover:text-white">FAQ</a></li>
+      </ul></div>
+    <div><div class="font-semibold text-white mb-3">Members</div>
+      <ul class="space-y-1.5 text-xs">
+        <li><a href="member-app.html" class="hover:text-white">Member app login</a></li>
+        <li><a data-trial="footer" class="cursor-pointer hover:text-white">Book a free trial</a></li>
+        <li><a href="tel:+16263949720" class="hover:text-white">(626) 394-9720</a></li>
+      </ul></div>
+  </div>
+  <!-- "Terms" is gone on purpose: there is no approved terms-of-service document to link to
+       (legal/ holds unapproved drafts with bracketed placeholders), and a dead legal link on
+       a page that collects personal data is worse than none. What IS true — what this page
+       does with what you type — is written out in plain words behind the link below. -->
+  <div class="border-t border-white/10 px-5 py-4 text-center text-xs text-white/40">© 2026 Cia Paulista Jiu-Jitsu · Monrovia, CA · <a data-member="privacy" class="cursor-pointer underline hover:text-white/70">How we use your details</a> · <a href="mailto:hello@ciapaulistajj.com" class="underline hover:text-white/70">hello@ciapaulistajj.com</a></div>
+  </footer>`;
+}
+/* Staging-only tools, rendered INSIDE the page (not outer chrome, which the de-frame removed).
+   The leads board is the point of the whole demo — it shows the request the prospect just
+   made landing somewhere — and Reset is the only way to clear the walkthrough's data. */
+function stagingStripHTML(){
+  if(!IS_STAGING) return '';
+  return `<div id="stgStrip" class="bg-ink border-t border-white/10 px-5 py-3">
+    <div class="max-w-[1100px] mx-auto flex flex-wrap items-center justify-center gap-2 text-xs">
+      <span class="font-bold uppercase tracking-wide text-gold">Staging tools</span>
+      <button data-leadsboard="1" class="pressable bg-white/10 border border-white/15 text-white font-semibold px-3 py-1.5 rounded-lg">🎯 Leads board (<span id="stgLeadCount">${S.leads.length}</span>)</button>
+      <button data-funnelreset="1" class="pressable bg-white/10 border border-white/15 text-white font-semibold px-3 py-1.5 rounded-lg">↺ Reset demo data</button>
+      <span class="text-white/40">Only on staging — the real site never shows this.</span>
+    </div>
+  </div>`;
+}
+function stickyHTML(){
+  return `<div class="md:hidden sticky bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate/15 px-4 py-3 safe-b">
+    <button data-trial="sticky" class="w-full bg-crimson text-white font-bold py-3 rounded-xl">Book your free trial — it’s free</button></div>`;
+}
+
+/* ============================== mount ============================== */
+function mount(){
+  site.innerHTML = navHTML()+heroHTML()+statsHTML()+programsHTML()+scheduleHTML()+pricingHTML()
+    +coachesHTML()+reviewsHTML()+faqHTML()+ctaHTML()+contactHTML()+footerHTML()+stagingStripHTML()+stickyHTML();
+  // dynamic regions
+  $('#schedGrid').innerHTML=schedCards('all');
+  $('#planGrid').innerHTML=planCards('mo');
+  renderHeroNext();
+  renderReview(0);
+}
+function renderHeroNext(){
+  const ses=upcomingSessions('all').filter(s=>s.spots>0).slice(0,3);
+  $('#heroNext').innerHTML=ses.map(s=>`<div class="flex items-center justify-between bg-white/8 rounded-lg px-3 py-2">
+    <div><div class="text-sm font-semibold">${esc(s.name)}</div><div class="text-xs text-white/60">${dateLabel(s.date,s.dayoff)} · ${fmtTime(s.t)}</div></div>
+    <span class="text-xs text-gold font-semibold">${s.spots} left</span></div>`).join('') || '<div class="text-sm text-white/60">Check the schedule below.</div>';
+}
+
+/* ============================== reviews carousel ============================== */
+let revIdx=0;
+function stars(n){ return '<span class="text-gold text-xl">'+'★'.repeat(n)+'<span class="text-slate/30">'+'★'.repeat(5-n)+'</span></span>'; }
+function renderReview(i){
+  revIdx=(i+REVIEWS.length)%REVIEWS.length; const r=REVIEWS[revIdx];
+  const body=$('#reviewBody'); if(!body) return;
+  body.innerHTML=`<div class="slidein">${stars(r.r)}
+    <p class="text-lg md:text-xl text-ink mt-4 max-w-2xl mx-auto">“${esc(r.q)}”</p>
+    <div class="mt-4 font-bold text-navy">${esc(r.n)}</div><div class="text-xs text-slate">${esc(r.prog)} · verified member</div></div>`;
+  $('#revDots').innerHTML=REVIEWS.map((_,j)=>`<button data-dot="${j}" class="w-2.5 h-2.5 rounded-full ${j===revIdx?'bg-crimson':'bg-slate/30'}"></button>`).join('');
+}
+
+/* ============================== FREE-TRIAL FUNNEL ============================== */
+const SOURCES=['Google search','Instagram','Facebook','Friend / referral','Drove by','Yelp','Other'];
+const EXP=['Total beginner','Trained a little','Experienced'];
+let F=null; // funnel state
+function openFunnel(prefill={}){
+  F={ step:0, prog:prefill.prog||'', sessionId:prefill.sessionId||'', flexible:false,
+      name:'',phone:'',email:'', isKid:false, child:'', childAge:'', guardianRel:'Parent',
+      source:'', exp:'', notes:'', waiver:false, errors:{} };
+  if(F.prog){ F.isKid=(F.prog==='kids'); F.step=1; }
+  if(prefill.sessionId){ F.step=2; const s=sessionById(prefill.sessionId); F.waitlist=!!(s&&s.spots<=0); }
+  renderFunnel();
+}
+function sessionById(id){ return upcomingSessions('all').find(x=>x.id===id); }
+function closeFunnel(){ F=null; overlay.innerHTML=''; }
+function funnelSessions(){ return upcomingSessions(F.isKid?'kids':(F.prog||'all')); }
+function progLabel(id){ const p=programById(id); return p?p.name:'—'; }
+function stepValid(){
+  F.errors={};
+  if(F.step===0 && !F.prog) F.errors.prog='Pick a program to continue.';
+  if(F.step===1 && !F.sessionId && !F.flexible) F.errors.session='Choose a class time, or pick “I’m flexible”.';
+  if(F.step===2){
+    if(!F.name.trim()) F.errors.name='Please enter your name.';
+    if(digits(F.phone).length<10) F.errors.phone='Enter a valid 10-digit phone.';
+    if(!validEmail(F.email)) F.errors.email='Enter a valid email.';
+    if(F.isKid){ if(!F.child.trim()) F.errors.child='Enter your child’s name.'; if(!F.childAge||+F.childAge<4||+F.childAge>13) F.errors.childAge='Age must be 4–13.'; }
+  }
+  if(F.step===3){ if(!F.source) F.errors.source='Let us know how you found us.'; if(!F.waiver) F.errors.waiver='Please acknowledge the waiver to continue.'; }
+  return Object.keys(F.errors).length===0;
+}
+function next(){ if(!stepValid()){ renderFunnel(); return; } F.step++; renderFunnel(); }
+function back(){ if(F.step>0){ F.step--; F.errors={}; F.submitting=false; renderFunnel(); } }
+function sessionLabelById(id){ const s=funnelSessions().find(x=>x.id===id)||upcomingSessions('all').find(x=>x.id===id); if(!s) return ''; return s.name+' · '+dateLabel(s.date,s.dayoff)+' · '+fmtTime(s.t)+' (w/ '+s.coach+')'; }
+
+function submitTrial(){
+  const p=programById(F.prog);
+  const created=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  const sessLabel = F.flexible? 'Flexible — gym to confirm a time' : (sessionLabelById(F.sessionId)+(F.waitlist?' · waitlist':''));
+  const lead={ id:'web'+Date.now(), name:F.name.trim(), phone:F.phone.trim(), email:F.email.trim(),
+    source:'Website', interest:p?p.interest:'', interestOther:'', stage:'New', created, waitlist:!!F.waitlist,
+    child:F.isKid?F.child.trim():'', childAge:F.isKid?F.childAge:'', guardianRel:F.isKid?F.guardianRel:'',
+    exp:F.exp, foundVia:F.source, notes:F.notes.trim(), session:sessLabel };
+  S.leads.push(lead); save(); refreshStgCount();
+  // Remember the real start time (if any) so the confirmation can offer a genuine .ics.
+  const picked = F.flexible ? null : sessionById(F.sessionId);
+  if(picked){ const [hh,mm]=picked.t.split(':').map(Number);
+    F.doneStart = new Date(picked.date.getFullYear(),picked.date.getMonth(),picked.date.getDate(),hh,mm).toISOString();
+    F.doneDur = picked.dur || 60;
+  } else { F.doneStart=null; }
+  // hand the lead to the shared data layer: CP.data.leads.add mirrors it into
+  // cp_leads_inbox (the owner-console bridge, exactly as before) AND queues the
+  // cloud insert — works anonymously, no sign-in needed. If data.js ever failed
+  // to load, fall back to the legacy direct push so the lead is never lost.
+  try{
+    if(window.CP && CP.data && CP.data.leads){ CP.data.leads.add(lead); }
+    else { const q=JSON.parse(localStorage.getItem('cp_leads_inbox')||'[]'); q.push(lead); localStorage.setItem('cp_leads_inbox',JSON.stringify(q)); }
+  }catch(e){}
+  F.done=lead; F.step=5; renderFunnel();
+}
+
+function renderFunnel(){
+  if(!F){ overlay.innerHTML=''; return; }
+  const steps=['Program','Class','Your info','Confirm','Review'];
+  const pct = F.step>=5?100:Math.round((F.step/4)*100);
+  let inner='';
+  if(F.step===5){ inner=confirmScreen(); }
+  else {
+    inner=`<div class="px-6 pt-5">
+      <div class="flex items-center justify-between mb-1"><div class="text-xs font-semibold text-slate uppercase tracking-wide">Free trial · step ${F.step+1} of 5</div>
+        <button data-fclose="1" class="text-slate/60 hover:text-navy text-xl leading-none">✕</button></div>
+      <div class="h-1.5 bg-mist rounded-full overflow-hidden mb-1"><div class="h-full bg-crimson transition-all" style="width:${pct}%"></div></div>
+      <div class="text-[11px] text-slate/60 mb-4">${steps[F.step]}</div>
+    </div>
+    <div class="px-6 pb-2 overflow-y-auto funnel-body">${stepBody()}</div>
+    <div class="px-6 py-4 border-t border-slate/10 flex items-center gap-3">
+      ${F.step>0?`<button data-fback="1" class="text-slate font-semibold px-4 py-2.5 rounded-lg hover:bg-mist">← Back</button>`:''}
+      <button data-fnext="1" class="ml-auto bg-crimson text-white font-bold px-6 py-2.5 rounded-lg pressable">${F.step===4?'Confirm my free trial':'Continue →'}</button>
+    </div>`;
+  }
+  // pop the panel ONCE on open; on step changes only swap inner content (avoids re-flicker every click)
+  let shell=document.getElementById('funnelShell');
+  if(shell){ shell.innerHTML=inner; return; }
+  overlay.innerHTML=`<div class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center funnel-backdrop" data-fbackdrop="1">
+    <div id="funnelShell" class="bg-white rounded-2xl w-full max-w-[520px] shadow-2xl pop funnel-shell flex flex-col">${inner}</div>
+  </div>`;
+}
+function err(k){ return F.errors[k]?`<div class="text-xs text-crimson mt-1">${esc(F.errors[k])}</div>`:''; }
+const inpC='w-full border border-slate/25 rounded-lg px-3 py-2.5 text-sm';
+
+function stepBody(){
+  if(F.step===0){
+    return `<div class="fade"><h3 class="text-xl font-extrabold text-navy mb-1">What would you like to try?</h3>
+      <p class="text-sm text-slate mb-4">Your first class is free — pick what fits.</p>
+      <div class="space-y-2">${PROGRAMS.map(p=>`<button data-pickprog="${p.id}" class="w-full text-left border-2 rounded-xl p-3 flex items-center gap-3 ${F.prog===p.id?'border-crimson bg-crimson/5':'border-slate/15 hover:border-slate/40'}">
+        <span class="text-2xl">${p.icon}</span><span class="flex-1"><span class="block font-bold text-navy">${p.name}</span><span class="block text-xs text-slate">${p.tag} · ${p.ages}</span></span>
+        ${F.prog===p.id?'<span class="text-crimson font-bold">✓</span>':''}</button>`).join('')}</div>${err('prog')}</div>`;
+  }
+  if(F.step===1){
+    const ses=funnelSessions().slice(0,10);
+    const isPrivate=(F.prog==='private');
+    return `<div class="fade"><h3 class="text-xl font-extrabold text-navy mb-1">${isPrivate?'When works for you?':'Pick a class to try'}</h3>
+      <p class="text-sm text-slate mb-4">${esc(progLabel(F.prog))} · ${isPrivate?'private lessons are scheduled 1:1 — tell us you’re flexible and a coach will reach out to set a time.':'we’ll save you a spot. Times are Pacific.'}</p>
+      ${ses.length?`<div class="space-y-2">
+        ${ses.map(s=>{const full=s.spots<=0;return `<button ${full?'disabled':''} data-picksession="${s.id}" class="w-full text-left border-2 rounded-xl p-3 flex items-center gap-3 ${F.sessionId===s.id?'border-crimson bg-crimson/5':'border-slate/15 hover:border-slate/40'} ${full?'opacity-50 cursor-not-allowed':''}">
+          <span class="flex-1"><span class="block font-bold text-navy">${esc(s.name)}</span><span class="block text-xs text-slate">${dateLabel(s.date,s.dayoff)} · ${fmtTime(s.t)} · ${esc(s.coach)}</span></span>
+          ${full?'<span class="text-xs text-crimson font-semibold">Full</span>':`<span class="text-xs ${s.spots<=4?'text-gold':'text-good'} font-semibold">${s.spots} left</span>`}
+          ${F.sessionId===s.id?'<span class="text-crimson font-bold ml-2">✓</span>':''}</button>`;}).join('')}
+      </div>`:`<div class="bg-mist rounded-xl p-4 text-sm text-slate text-center">No fixed group times for this program — choose “I’m flexible” below and we’ll coordinate a time with you directly.</div>`}
+      <button data-flexible="1" class="w-full mt-3 text-left border-2 border-dashed rounded-xl p-3 ${F.flexible?'border-crimson bg-crimson/5':'border-slate/25 hover:border-slate/40'}">
+        <span class="font-bold text-navy">🤙 I’m flexible — pick the best time for me</span><span class="block text-xs text-slate">The front desk will get in touch to confirm a ${isPrivate?'private lesson':'beginner-friendly'} slot.</span></button>
+      ${err('session')}</div>`;
+  }
+  if(F.step===2){
+    return `<div class="fade"><h3 class="text-xl font-extrabold text-navy mb-1">Tell us about you</h3>
+      ${F.waitlist?`<div class="bg-gold/15 border border-gold/40 text-ink text-xs rounded-lg p-3 mb-3">⏳ That class is full — you’ll join the <b>waitlist</b>. The front desk will let you know the moment a spot opens, and suggest the next open class too.</div>`:''}
+      <p class="text-sm text-slate mb-4">So we can confirm your spot and have a coach ready.</p>
+      <label class="block text-xs font-semibold text-slate mb-1">Your full name</label>
+      <input id="f_name" class="${inpC}" value="${esc(F.name)}" placeholder="Alex Rivera"/>${err('name')}
+      <div class="grid grid-cols-2 gap-3 mt-3">
+        <div><label class="block text-xs font-semibold text-slate mb-1">Mobile phone</label><input id="f_phone" class="${inpC}" value="${esc(F.phone)}" placeholder="(626) 555-0148"/>${err('phone')}</div>
+        <div><label class="block text-xs font-semibold text-slate mb-1">Email</label><input id="f_email" class="${inpC}" value="${esc(F.email)}" placeholder="you@email.com"/>${err('email')}</div>
+      </div>
+      <label class="flex items-center gap-2 mt-4 text-sm text-navy font-medium cursor-pointer"><input id="f_iskid" type="checkbox" ${F.isKid?'checked':''} class="w-4 h-4 accent-crimson"/> This trial is for my child</label>
+      ${F.isKid?`<div class="mt-3 bg-mist rounded-xl p-3 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-semibold text-slate mb-1">Child’s name</label><input id="f_child" class="${inpC}" value="${esc(F.child)}" placeholder="Sam Rivera"/>${err('child')}</div>
+          <div><label class="block text-xs font-semibold text-slate mb-1">Child’s age</label><input id="f_childage" type="number" min="4" max="13" class="${inpC}" value="${esc(F.childAge)}" placeholder="8"/>${err('childAge')}</div>
+        </div>
+        <div><label class="block text-xs font-semibold text-slate mb-1">You are the child’s…</label>
+          <select id="f_rel" class="${inpC}">${['Parent','Guardian','Grandparent','Other'].map(o=>`<option ${F.guardianRel===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>`:''}
+    </div>`;
+  }
+  if(F.step===3){
+    return `<div class="fade"><h3 class="text-xl font-extrabold text-navy mb-1">Almost there</h3>
+      <p class="text-sm text-slate mb-4">A couple last things and you’re booked.</p>
+      <label class="block text-xs font-semibold text-slate mb-1">How did you hear about us?</label>
+      <div class="flex flex-wrap gap-2 mb-1">${SOURCES.map(s=>`<button data-source="${esc(s)}" class="chip text-sm px-3 py-1.5 rounded-full border ${F.source===s?'bg-navy text-white border-navy':'bg-white text-slate border-slate/25 hover:border-slate/50'}">${esc(s)}</button>`).join('')}</div>${err('source')}
+      <label class="block text-xs font-semibold text-slate mb-1 mt-4">Experience level <span class="text-slate/50 font-normal">(optional)</span></label>
+      <div class="flex flex-wrap gap-2">${EXP.map(s=>`<button data-exp="${esc(s)}" class="chip text-sm px-3 py-1.5 rounded-full border ${F.exp===s?'bg-teal text-white border-teal':'bg-white text-slate border-slate/25 hover:border-slate/50'}">${esc(s)}</button>`).join('')}</div>
+      <label class="block text-xs font-semibold text-slate mb-1 mt-4">Anything we should know? <span class="text-slate/50 font-normal">(optional)</span></label>
+      <textarea id="f_notes" class="${inpC}" rows="2" placeholder="Goals, injuries, schedule preferences…">${esc(F.notes)}</textarea>
+      <label class="flex items-start gap-2 mt-4 text-sm text-navy cursor-pointer bg-mist rounded-xl p-3"><input id="f_waiver" type="checkbox" ${F.waiver?'checked':''} class="w-4 h-4 accent-crimson mt-0.5"/>
+        <span>I understand I’ll sign Cia Paulista’s standard <a data-member="waiver" class="underline text-crimson" onclick="event.preventDefault()">liability waiver</a> at the gym before training, and I agree to be contacted about my trial.</span></label>${err('waiver')}
+    </div>`;
+  }
+  if(F.step===4){
+    const p=programById(F.prog);
+    const rows=[
+      ['Program',progLabel(F.prog)],
+      ['Class',F.flexible?'Flexible — gym will confirm':(sessionLabelById(F.sessionId)+(F.waitlist?' · waitlist':''))],
+      ['Name',F.name],
+      ['Phone',F.phone],['Email',F.email],
+    ];
+    if(F.isKid){ rows.push(['Child',F.child+' (age '+F.childAge+')']); rows.push(['Guardian',F.guardianRel]); }
+    rows.push(['Heard via',F.source]); if(F.exp) rows.push(['Experience',F.exp]); if(F.notes) rows.push(['Notes',F.notes]);
+    return `<div class="fade"><h3 class="text-xl font-extrabold text-navy mb-1">Review &amp; confirm</h3>
+      <p class="text-sm text-slate mb-4">Make sure everything looks right.</p>
+      <div class="bg-mist rounded-xl divide-y divide-slate/10">
+        ${rows.map(([k,v])=>`<div class="flex justify-between gap-4 px-4 py-2.5 text-sm"><span class="text-slate">${esc(k)}</span><span class="font-semibold text-navy text-right">${esc(v||'—')}</span></div>`).join('')}
+      </div>
+      <button data-fgoto="0" class="text-xs text-crimson underline mt-3">← Change program or details</button>
+      <div class="text-xs text-slate/70 mt-3 bg-teal/5 border border-teal/20 rounded-lg p-3">By confirming, you’ll be added to Cia Paulista’s trial list and the front desk will get in touch on ${esc(F.phone||'the number above')} to confirm. No payment now — your first class is free.</div>
+    </div>`;
+  }
+  return '';
+}
+function confirmScreen(){
+  const l=F.done; const p=programById(F.prog); const wl=l.waitlist;
+  return `<div class="p-8 text-center fade">
+    <div class="w-16 h-16 rounded-full ${wl?'bg-gold/20 text-gold':'bg-good/15 text-good'} grid place-items-center text-3xl mx-auto mb-4">${wl?'⏳':'✓'}</div>
+    <h3 class="text-2xl font-extrabold text-navy">${wl?`You’re on the waitlist, ${esc((l.name||'').split(' ')[0]||'')}!`:`You’re booked, ${esc((l.name||'').split(' ')[0]||'')}!`}</h3>
+    ${/* No software here can send a text, so live never says one was sent. A person at the
+          front desk making the call IS real — that is what it promises instead. */''}
+    <p class="text-slate mt-2">${wl
+      ? `That class is full, so we’ve added you to the <b>waitlist</b>. The front desk will contact you on <b>${esc(l.phone)}</b> the moment a spot opens.`
+      : (IS_LIVE
+        ? `Your free ${esc(p?p.name:'trial')} class is reserved. The front desk will confirm with you on <b>${esc(l.phone)}</b> — usually the same day.`
+        : `Your free ${esc(p?p.name:'trial')} class is reserved. We just texted a confirmation to <b>${esc(l.phone)}</b>.`)}</p>
+    <div class="bg-mist rounded-xl p-4 mt-5 text-left text-sm">
+      <div class="font-bold text-navy mb-2">🗓 ${esc(l.session)}</div>
+      <div class="text-slate">📍 819 S Myrtle Ave, Monrovia · free rear parking</div>
+      <div class="text-slate mt-1">👕 Bring water + comfy clothes. We’ll have a loaner gi ready.</div>
+      <div class="text-slate mt-1">⏰ Arrive 15 min early to meet your coach and sign the waiver.</div>
+    </div>
+    <div class="grid ${F.doneStart?'grid-cols-2':'grid-cols-1'} gap-2 mt-4">
+      ${F.doneStart?`<button data-addcal="1" class="bg-navy text-white text-sm font-semibold py-2.5 rounded-lg pressable">＋ Add to calendar</button>`:''}
+      <a href="https://maps.google.com/?q=819+S+Myrtle+Ave+Monrovia" target="_blank" class="bg-white border border-slate/20 text-navy text-sm font-semibold py-2.5 rounded-lg pressable grid place-items-center">📍 Directions</a>
+    </div>
+    <div class="text-xs text-slate/70 mt-4 bg-good/8 border border-good/20 rounded-lg p-3">${IS_STAGING
+      ? `🎯 You’ve been added to the gym’s <b>Leads board</b> as a new trial (source: Website). <span class="text-slate/60">Tap “🎯 Leads board” in the staging strip at the bottom of the page to see it.</span>`
+      : `🎯 Your request is with the front desk now, filed as a new trial. Someone will follow up to confirm.`}</div>
+    <div class="flex gap-2 mt-4">
+      <button data-fclose="1" class="flex-1 bg-crimson text-white font-bold py-2.5 rounded-lg pressable">Done</button>
+      <button data-fanother="1" class="flex-1 bg-white border border-slate/20 text-navy font-semibold py-2.5 rounded-lg pressable">Book another</button>
+    </div>
+  </div>`;
+}
+
+/* ============================== program & coach modal ============================== */
+function programModal(id){
+  const p=programById(id); if(!p) return;
+  overlay.innerHTML=`<div class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4" data-mclose="1">
+    <div class="bg-white rounded-2xl w-full max-w-[480px] shadow-2xl pop">
+      <div class="hero-bg text-white rounded-t-2xl p-6 relative">
+        <button data-mclose="1" class="absolute top-3 right-3 text-white/70 hover:text-white text-2xl leading-none">✕</button>
+        <div class="text-4xl mb-2">${p.icon}</div><div class="text-2xl font-extrabold">${p.name}</div><div class="text-white/70 text-sm">${p.tag} · ${p.ages}</div>
+      </div>
+      <div class="p-6">
+        <p class="text-slate text-sm">${esc(p.blurb)}</p>
+        <ul class="mt-4 space-y-2 text-sm">${p.points.map(pt=>`<li class="flex gap-2"><span class="text-good">✓</span>${esc(pt)}</li>`).join('')}</ul>
+        <div class="flex gap-2 mt-6">
+          <button data-trialprog="${p.id}" class="flex-1 bg-crimson text-white font-bold py-2.5 rounded-lg pressable">Book a free trial</button>
+          <button data-scroll="#schedule" data-mclose="1" class="flex-1 bg-white border border-slate/20 text-navy font-semibold py-2.5 rounded-lg pressable">See schedule</button>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+/* ============================== generic info modal ============================== */
+function infoModal(title,body){
+  overlay.innerHTML=`<div class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4" data-mclose="1">
+    <div class="bg-white rounded-2xl w-full max-w-[440px] shadow-2xl pop">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate/10"><div class="font-bold text-navy">${esc(title)}</div><button data-mclose="1" class="text-slate/60 hover:text-navy text-xl leading-none">✕</button></div>
+      <div class="p-5 text-sm text-slate">${body}</div>
+      <div class="px-5 pb-5"><button data-mclose="1" class="w-full bg-navy text-white font-semibold py-2.5 rounded-lg pressable">Got it</button></div>
+    </div></div>`;
+}
+
+/* ============================== real content behind the footer links ==============================
+   Both of these used to be a modal that told the reader this was a prototype and described the
+   project's file structure. They now say true, specific, useful things instead. */
+const PRIVACY_HTML = `
+  <p class="mb-2"><b class="text-navy">What we collect.</b> Only what you type here: your name, mobile number and email — plus,
+  if the trial is for your child, their name and age.</p>
+  <p class="mb-2"><b class="text-navy">Why.</b> So the front desk can hold your spot, confirm your class and answer your questions.</p>
+  <p class="mb-2"><b class="text-navy">Who sees it.</b> Cia Paulista staff. We don’t sell it, rent it or hand it to advertisers.</p>
+  <p class="mb-2"><b class="text-navy">How long.</b> We keep it while you’re in touch with the academy. Ask us to delete it and we will.</p>
+  <p><b class="text-navy">Questions, or want your details removed?</b> Email
+  <a href="mailto:hello@ciapaulistajj.com" class="text-crimson font-semibold">hello@ciapaulistajj.com</a> or call
+  <a href="tel:+16263949720" class="text-crimson font-semibold">(626) 394-9720</a>.</p>`;
+
+const WAIVER_HTML = `
+  <p class="mb-2">Jiu-jitsu and grappling are full-contact. Injuries happen: bruises, sprains, joint injuries, broken bones,
+  concussions, skin infections picked up on the mats and, rarely, serious permanent injury.</p>
+  <p class="mb-2">The academy’s waiver says you understand those risks and take them on voluntarily, that you release Cia Paulista
+  and its instructors from liability for training injuries as far as California law allows, that you’re fit to train (or have a
+  doctor’s clearance), that you’ll follow the safety and hygiene rules, and that staff may arrange emergency care if you can’t
+  consent yourself at the time.</p>
+  <p><b class="text-navy">You sign the full document at the gym</b> — arrive about 15 minutes early for your first class and the
+  front desk will walk you through it. Nothing is signed on this website.</p>`;
+
+/* ============================== staging-only tools ============================== */
+function refreshStgCount(){ const el=$('#stgLeadCount'); if(el) el.textContent=S.leads.length; }
+function leadsBoardModal(){
+  const rows=S.leads.slice().reverse();
+  const body = rows.length
+    ? `<div class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">${rows.map(l=>`
+        <div class="border border-slate/15 rounded-xl p-3">
+          <div class="flex justify-between gap-3"><span class="font-bold text-navy">${esc(l.name||'—')}</span><span class="text-xs text-slate/70">${esc(l.created||'')}</span></div>
+          <div class="text-xs mt-0.5">${esc(l.phone||'')} · ${esc(l.email||'')}</div>
+          <div class="text-xs mt-1">${esc(l.interest||'—')}${l.waitlist?' · <b class="text-gold">waitlist</b>':''}</div>
+          ${l.session?`<div class="text-xs text-slate/70 mt-1">🗓 ${esc(l.session)}</div>`:''}
+          ${l.child?`<div class="text-xs text-slate/70 mt-1">Child: ${esc(l.child)} (age ${esc(l.childAge)})</div>`:''}
+          ${l.foundVia?`<div class="text-xs text-slate/70 mt-1">Heard via ${esc(l.foundVia)}</div>`:''}
+        </div>`).join('')}</div>`
+    : `<div class="text-center py-6">No trial requests yet. Book one and it lands here.</div>`;
+  infoModal('🎯 Leads board · '+rows.length+' captured',
+    body+`<p class="text-xs text-slate/60 mt-3">Captured by this staging browser. On the real site these go to the owner console’s Leads board.</p>`);
+}
+function resetFunnelDemo(){
+  let ok=true; try{ ok=window.confirm('Clear the demo data on this staging browser? This removes the leads captured here, the newsletter list and the "how it works" intro. It does not touch the live site.'); }catch(e){}
+  if(!ok) return;
+  try{ ['cp_funnel_v1','cp_leads_inbox','cp_onb_funnel'].forEach(k=>localStorage.removeItem(k)); }catch(e){}
+  try{ location.reload(); }catch(e){ S=fresh(); mount(); }
+}
+
+/* ============================== calendar file (real, no backend) ==============================
+   "Add to calendar" used to relabel itself and toast a success for a file it never produced.
+   It now writes a genuine .ics the browser downloads — and it is only offered when there is an
+   actual date and time to add (never for a flexible request or a waitlist spot). */
+function icsDownload(start, mins, title, where){
+  const p=n=>(n<10?'0':'')+n;
+  const z=d=>d.getUTCFullYear()+p(d.getUTCMonth()+1)+p(d.getUTCDate())+'T'+p(d.getUTCHours())+p(d.getUTCMinutes())+'00Z';
+  const end=new Date(start.getTime()+(mins||60)*60000);
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Cia Paulista Jiu-Jitsu//Free trial//EN','BEGIN:VEVENT',
+    'UID:'+Date.now()+'@ciapaulistajj.com','DTSTAMP:'+z(new Date()),'DTSTART:'+z(start),'DTEND:'+z(end),
+    'SUMMARY:'+title,'LOCATION:'+where,'DESCRIPTION:Arrive 15 minutes early to meet your coach and sign the waiver.',
+    'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);
+  a.download='cia-paulista-trial.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ============================== event wiring (delegation) ============================== */
+function smoothTo(sel){ const t=$(sel,site); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); }
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-scroll],[data-trial],[data-trialprog],[data-trialplan],[data-prog],[data-booksession],[data-filter],[data-bill],[data-faq],[data-dot],[data-social],[data-member],[data-fclose],[data-fback],[data-fnext],[data-fbackdrop],[data-fgoto],[data-fanother],[data-addcal],[data-pickprog],[data-picksession],[data-flexible],[data-source],[data-exp],[data-mclose],[data-trialprog],[data-leadsboard],[data-funnelreset]');
+  // site controls (the mobile nav lives in the site itself)
+  if(e.target.closest('#hamb')){ const m=$('#mobnav'); if(m) m.classList.toggle('hidden'); return; }
+  if(e.target.closest('#revPrev')){ renderReview(revIdx-1); return; }
+  if(e.target.closest('#revNext')){ renderReview(revIdx+1); return; }
+
+  if(!t) return;
+  const d=t.dataset;
+
+  // navigation / scroll
+  if(d.scroll){ smoothTo(d.scroll); const m=$('#mobnav'); if(m)m.classList.add('hidden'); if(d.mclose) overlay.innerHTML=''; if(t.hasAttribute('data-mclose')) overlay.innerHTML=''; return; }
+
+  // open funnel variants
+  if(d.trial!==undefined){ openFunnel(); return; }
+  if(d.trialprog!==undefined){ openFunnel({prog:d.trialprog}); return; }
+  if(d.trialplan!==undefined){ const map={kids:'kids',unlimited:'adult-gi','2x':'adult-gi'}; openFunnel({prog:map[d.trialplan]||''}); return; }
+  if(d.booksession!==undefined){ openFunnel({prog:d.prog,sessionId:d.booksession}); return; }
+
+  // program card → modal (but inner Try-free handled above via data-trialprog)
+  if(d.prog!==undefined && t.classList.contains('prog-card')){ programModal(d.prog); return; }
+
+  // schedule filter
+  if(d.filter!==undefined){ $$('.filterbtn').forEach(b=>{const on=b.dataset.filter===d.filter;b.className='filterbtn px-4 py-2 rounded-lg text-sm font-semibold '+(on?'bg-navy text-white':'bg-white text-slate border border-slate/15');}); $('#schedGrid').innerHTML=schedCards(d.filter); return; }
+
+  // pricing toggle
+  if(d.bill!==undefined){ $$('.billbtn').forEach(b=>{const on=b.dataset.bill===d.bill;b.className='billbtn px-4 py-2 rounded-md '+(on?'bg-white shadow text-navy':'text-slate');}); $('#planGrid').innerHTML=planCards(d.bill); return; }
+
+  // FAQ accordion
+  if(d.faq!==undefined){ const body=$('#faq-'+d.faq); const ic=t.querySelector('.faq-ic'); const open=body.classList.toggle('open'); ic.textContent=open?'−':'+'; ic.style.transform=open?'rotate(180deg)':''; return; }
+
+  // reviews dots
+  if(d.dot!==undefined){ renderReview(+d.dot); return; }
+
+  // social links — only rendered off-live (no real accounts are connected yet)
+  if(d.social!==undefined){ infoModal(d.social, `Cia Paulista’s <b>${esc(d.social)}</b> page isn’t connected yet, so this link has nowhere to go. <span class="text-slate/60">Staging preview — on the real site the row is hidden until the accounts are linked.</span>`); return; }
+
+  // footer / inline info links — real content only
+  if(d.member!==undefined){
+    if(d.member==='privacy'){ infoModal('How we use your details', PRIVACY_HTML); return; }
+    if(d.member==='waiver'){ infoModal('The waiver — what it says', WAIVER_HTML); return; }
+    return;
+  }
+
+  // staging tools (rendered only when IS_STAGING)
+  if(d.leadsboard!==undefined){ leadsBoardModal(); return; }
+  if(d.funnelreset!==undefined){ resetFunnelDemo(); return; }
+
+  // ---- modal close ---- close on an explicit close button (e.target===t), or a click on the backdrop itself (also e.target===t) — never on inner children
+  if(d.mclose!==undefined && e.target===t){ overlay.innerHTML=''; return; }
+
+  // ---- funnel controls ----
+  if(d.fbackdrop!==undefined && e.target===t){ overlay.innerHTML=''; F=null; return; }
+  if(d.fclose!==undefined){ closeFunnel(); return; }
+  if(d.fback!==undefined){ back(); return; }
+  if(d.fnext!==undefined){ next(); return; }
+  if(d.fgoto!==undefined){ F.step=+d.fgoto; F.errors={}; F.submitting=false; renderFunnel(); return; }
+  if(d.fanother!==undefined){ openFunnel(); return; }
+  if(d.addcal!==undefined){
+    if(!F || !F.doneStart){ return; }
+    icsDownload(new Date(F.doneStart), F.doneDur, 'Free trial — '+(progLabel(F.prog)||'Cia Paulista'), '819 S Myrtle Ave, Monrovia, CA 91016');
+    t.textContent='✓ Calendar file saved'; t.classList.add('bg-good'); t.classList.remove('bg-navy');
+    toast('🗓 Saved cia-paulista-trial.ics — open it to add the class'); return;
+  }
+  if(d.pickprog!==undefined){ F.prog=d.pickprog; F.isKid=(d.pickprog==='kids'); F.sessionId=''; F.flexible=false; F.errors={}; renderFunnel(); return; }
+  if(d.picksession!==undefined){ F.sessionId=d.picksession; F.flexible=false; F.errors={}; renderFunnel(); return; }
+  if(d.flexible!==undefined){ F.flexible=!F.flexible; if(F.flexible)F.sessionId=''; F.errors={}; renderFunnel(); return; }
+  if(d.source!==undefined){ F.source=d.source; F.errors={}; renderFunnel(); return; }
+  if(d.exp!==undefined){ F.exp=(F.exp===d.exp?'':d.exp); renderFunnel(); return; }
+});
+
+// capture funnel field edits before re-render (on input)
+document.addEventListener('input',e=>{
+  if(!F) {
+    if(e.target.id==='newsEmail'){ /* handled on submit */ }
+    return;
+  }
+  const id=e.target.id; if(!id||!id.startsWith('f_')) return;
+  const v=e.target.type==='checkbox'?e.target.checked:e.target.value;
+  if(id==='f_name')F.name=v; else if(id==='f_phone')F.phone=v; else if(id==='f_email')F.email=v;
+  else if(id==='f_child')F.child=v; else if(id==='f_childage')F.childAge=v; else if(id==='f_rel')F.guardianRel=v;
+  else if(id==='f_notes')F.notes=v; else if(id==='f_waiver')F.waiver=v;
+  else if(id==='f_iskid'){ F.isKid=v; renderFunnel(); /* reveal child fields */ }
+});
+
+// confirm on review step is the same data-fnext; intercept to submit.
+// Capture is instant, but the tap still gets an acknowledged working state (~300ms
+// pressed/spinner) so the jump to the success screen never feels like a dead click.
+const _next=next;
+next=function(){
+  if(F.step===4){
+    if(!stepValid()){ renderFunnel(); return; }
+    if(F.submitting) return;                       // ignore double-taps while acknowledging
+    F.submitting=true;
+    const btn=document.querySelector('#funnelShell [data-fnext]');
+    if(btn){ btn.disabled=true; btn.classList.add('opacity-80'); btn.innerHTML='<span class="spin mr-2"></span>'+(F.waitlist?'Adding you to the waitlist…':'Booking your spot…'); }
+    // ALWAYS clear submitting when the beat lands — Back during the 300ms used to
+    // strand submitting=true and brick every later Confirm. Submit only if the
+    // user is still sitting on Review mid-submit (Back/goto cancel via submitting=false).
+    setTimeout(()=>{ if(!F) return; const go=F.submitting&&F.step===4; F.submitting=false; if(go) submitTrial(); },300);
+    return;
+  }
+  _next();
+};
+
+// newsletter form
+document.addEventListener('submit',e=>{
+  if(e.target.id==='newsForm'){ e.preventDefault(); const v=$('#newsEmail').value.trim(); const msg=$('#newsMsg');
+    if(!validEmail(v)){ msg.className='text-xs mt-2 text-crimson'; msg.textContent='Please enter a valid email.'; return; }
+    S.news.push(v); save();
+    // There is no mailing-list provider wired, so "you're on the list" would be a fake
+    // success. What IS real: hand the address to the gym the same way a trial request is
+    // handed over, and say that's what happened.
+    try{
+      const created=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+      const rec={id:'news'+Date.now(), name:v.split('@')[0]||'Newsletter signup', phone:'', email:v, source:'Website',
+        interest:'Weekly schedule email', stage:'New', created, waitlist:false, child:'', childAge:'', guardianRel:'',
+        exp:'', foundVia:'Newsletter box', notes:'Asked for the weekly schedule + offers by email', session:''};
+      if(window.CP && CP.data && CP.data.leads){ CP.data.leads.add(rec); }
+      else { const q=JSON.parse(localStorage.getItem('cp_leads_inbox')||'[]'); q.push(rec); localStorage.setItem('cp_leads_inbox',JSON.stringify(q)); }
+    }catch(e){}
+    msg.className='text-xs mt-2 text-good'; msg.textContent='✓ Got it — the academy has your email and will send you the weekly schedule.'; $('#newsEmail').value=''; toast('📩 Thanks — your email is with the front desk'); }
+});
+
+// esc closes overlay
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ overlay.innerHTML=''; F=null; } });
+
+/* ============================== go ============================== */
+mount();
+
+/* ============================== onboarding (additive; never breaks boot) ============================== */
+if(window.Onboarding){
+  Onboarding.init({
+    key:'cp_onb_funnel',
+    accent:'#E11D2A',
+    title:"New here? Here's how it works",
+    subtitle:'From first visit to first class in minutes.',
+    bullets:[
+      'Browse programs & the weekly schedule',
+      'Start a free trial in about 2 minutes',
+      "Pick a plan whenever you're ready"
+    ],
+    tour:[
+      {sel:'#programs', title:'Explore the programs', body:'Gi, no-gi, kids, privates and the comp team — tap any card to learn more or start a free trial.', place:'bottom'},
+      {sel:'#schedule', title:'Check the weekly schedule', body:'See the next several days of classes and pick a time. Full classes can still be joined via the waitlist.', place:'top'},
+      {sel:'#pricing', title:'See simple pricing', body:'Month-to-month, no contracts. But every plan starts with a free trial — no card needed.', place:'top'},
+      {sel:'[data-trial="hero"]', title:'Book your free trial', body:'Ready? This kicks off a ~2-minute form to claim your first free class.', place:'bottom'}
+    ],
+    helpLabel:'How it works',
+    helpPosition:'bottom-left'
+  });
+}
+</script>
+</body>
+</html>

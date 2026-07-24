@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="learn.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='live'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     lands below the fold. dvh tracks the VISIBLE viewport. !important because the Tailwind
+     CDN injects its stylesheet at runtime, after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Cia Paulista — Learn</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<!-- env.js must load FIRST: everything after it can read CP.env to tell live from staging
+     from a local/jsdom dev run. -->
+<script src="env.js"></script>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script>Babel.registerPreset("classic",{presets:[[Babel.availablePresets["react"],{runtime:"classic"}]]});</script>
+<script src="vendor/tailwind.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#E9E9EE', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', teal:'#38BDF8',
+    ink:'#0B0B0D', surface:'#151517'
+  }}}}
+</script>
+<style>
+  html{scrollbar-gutter:stable}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* ===== Tatame — dark performance theme (red / black / white / gray) ===== */
+  .tatame{background:#0B0B0D;color:#F3F3F5}
+  .tatame .shadow-card{box-shadow:0 0 0 1px rgba(255,255,255,.07),0 12px 32px -14px rgba(0,0,0,.75)}
+  .tatame .bg-white{background:#151517}
+  .tatame .text-navy{color:#F3F3F5}
+  .tatame .bg-navy{background:#2A2A2F}
+  .tatame input,.tatame select,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+  @keyframes __spin{to{transform:rotate(360deg)}}
+  @keyframes __fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .fadeup{animation:__fadeup .28s ease both}
+  @keyframes __tick{0%,100%{opacity:.35}50%{opacity:1}}
+  /* ===== Replay player (fake screen-recording) ===== */
+  .replay-screen{overflow:hidden}
+  .replay-cursor{position:absolute;transform:translate(-50%,-50%);transition:top .55s cubic-bezier(.4,0,.2,1),left .55s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:5}
+  .replay-dot{width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.5)}
+  .replay-ripple{position:absolute;top:7px;left:7px;width:14px;height:14px;border-radius:50%;border:2px solid #E11D2A;transform:translate(-50%,-50%);animation:__ripple .65s ease-out}
+  @keyframes __ripple{from{opacity:.85;width:10px;height:10px}to{opacity:0;width:48px;height:48px}}
+  .replay-fade{animation:__fadeup .35s ease both}
+  .replay-typing{letter-spacing:2px;animation:__tick 1s steps(3,end) infinite}
+  .noscroll-x{overflow-x:hidden}
+</style>
+</head>
+<body class="text-navy tatame noscroll-x">
+<div id="root"><div id="__boot" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B0B0D;color:#9a9aa2;font:600 14px/1.5 ui-sans-serif,system-ui,sans-serif">
+  <div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.12);border-top-color:#E11D2A;border-radius:50%;animation:__spin .8s linear infinite"></div>
+  <div>Loading the Learn hub…</div>
+</div></div>
+<!-- ===== Safety net: never show a silent blank page again ===== -->
+<script>
+(function(){
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function panel(title,detail){
+    var r=document.getElementById('root'); if(!r) return;
+    r.innerHTML='<div style="max-width:780px;margin:7vh auto;padding:28px 32px;font:14px/1.6 ui-sans-serif,system-ui,sans-serif;'
+      +'background:#151517;color:#f3f3f5;border:1px solid rgba(225,29,42,.45);border-radius:16px;box-shadow:0 20px 60px -20px #000">'
+      +'<div style="font-weight:800;font-size:18px;color:#ff5a5f;margin-bottom:6px">⚠ '+esc(title)+'</div>'
+      +'<div style="color:#9a9aa2;margin-bottom:14px">The Learn hub hit a problem while loading — it caught it instead of going blank. Send me this text and I’ll fix it.</div>'
+      +'<pre style="white-space:pre-wrap;background:#0b0b0d;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;color:#e8e8ec;overflow:auto;max-height:55vh">'+esc(detail)+'</pre></div>';
+  }
+  window.__showFatal=panel;
+  window.addEventListener('error',function(e){
+    if(e&&e.message&&/^Script error/i.test(e.message))return;
+    panel('JavaScript error',(e.error&&e.error.stack)?e.error.stack:(e.message+'\n'+(e.filename||'')+':'+(e.lineno||'')));
+  });
+  window.addEventListener('unhandledrejection',function(e){
+    panel('Unhandled promise rejection',(e.reason&&e.reason.stack)?e.reason.stack:String(e.reason));
+  });
+  window.addEventListener('DOMContentLoaded',function(){
+    var miss=[];
+    if(typeof React==='undefined')miss.push('React  — vendor/react.production.min.js');
+    if(typeof ReactDOM==='undefined')miss.push('ReactDOM  — vendor/react-dom.production.min.js');
+    if(typeof Babel==='undefined')miss.push('Babel  — vendor/babel.min.js');
+    if(miss.length)panel('A required library failed to load','Missing:\n  • '+miss.join('\n  • ')+'\n\nMake sure the "vendor" folder is next to this HTML file.');
+  });
+  setTimeout(function(){
+    if(document.getElementById('__boot')) panel('The page did not start',
+      'Scripts loaded but React never mounted within 10s.\nThis is almost always a JSX syntax error in the page script.\nOpen DevTools (F12) → Console for the exact red error, or send me your last edit.');
+  },10000);
+})();
+</script>
+<!-- Guide engine (quest state + telemetry). MUST load before the app script. -->
+<script src="guide.js"></script>
+<script type="text/babel" data-presets="classic">
+const {useState,useEffect,useRef,useMemo,useCallback}=React;
+const G = window.Guide;
+
+/* ============================================================ CANONICAL KNOWLEDGE-CENTER REGISTRY ============================================================ */
+/* Fields id/icon/q/ask/dash/goto/video/tags are embedded VERBATIM from .superpowers/sdd/kc-articles.json —
+   the assistant (assistant-home.html) embeds the SAME data; any drift breaks cross-linking.
+   Presentation-only fields ADDED here: `cat` (category chips) and `replayFrames` (Replay player) / `videoCaption`. */
+const KC_ARTICLES = [
+  { id:"paid-this-month", icon:"💳",
+    q:"How do I know if somebody paid for their classes this month?",
+    ask:{phrase:"Who hasn't paid this month?"},
+    dash:[{do:"Open Dashboard view", hint:"📊 button in the rail"},{do:"Click Billing in the sidebar"},{do:"The Failed payments list is who hasn't paid — click a name for their full history"}],
+    goto:"Billing", video:"media/kc-paid.mp4", tags:["billing","payments","money"],
+    cat:["Money"],
+    videoCaption:"Front desk, 9pm. You already know who paid — and who didn't." },
+
+  { id:"take-a-payment", icon:"🧾",
+    q:"How do I take a payment at the front desk?",
+    ask:{phrase:"Record a payment"},
+    dash:[{do:"Open Front Desk"},{do:"Use the POS card to take a payment"},{do:"Pick the member and amount — the receipt logs automatically"}],
+    goto:"Front Desk", replay:true, tags:["payments","front-desk"],
+    cat:["Money","Front desk"],
+    replayFrames:[
+      {ui:"console", nav:"Front Desk", cap:"Open Front Desk from the sidebar", click:true, cursor:{top:"24%",left:"20%"},
+        title:"Front Desk", lines:["Live mat feed · 12 on the mats now","POS · take a payment →"]},
+      {ui:"console", nav:"Front Desk", cap:"Tap the POS card, pick the member", click:true, cursor:{top:"62%",left:"68%"},
+        title:"POS — new sale", lines:["Member: Carlos Mendez","Item: Adult Unlimited · $40"]},
+      {ui:"console", nav:"Front Desk", cap:"Confirm — the receipt logs itself", click:true, cursor:{top:"80%",left:"68%"},
+        title:"Payment received ✓", lines:["$40 · Carlos Mendez","Saved to Billing automatically"]}
+    ]},
+
+  { id:"checkin-front-desk", icon:"🛎️",
+    q:"How do I check someone in for class?",
+    ask:{phrase:"Check someone in"},
+    dash:[{do:"Open Front Desk"},{do:"The live feed shows who's on the mats right now"},{do:"Tap Check in next to a name"}],
+    goto:"Front Desk", replay:true, tags:["front-desk","attendance"],
+    cat:["Front desk","People"],
+    replayFrames:[
+      {ui:"console", nav:"Front Desk", cap:"Open Front Desk", click:true, cursor:{top:"24%",left:"20%"},
+        title:"Front Desk", lines:["Live feed — who's arriving","Search a member to check in"]},
+      {ui:"console", nav:"Front Desk", cap:"The live feed shows who's on the mats", cursor:{top:"52%",left:"60%"},
+        title:"On the mats now", lines:["Bruno Alves · 6:02pm","Sarah Lin · 6:04pm","Carlos Mendez · arriving…"]},
+      {ui:"console", nav:"Front Desk", cap:"Tap Check in next to a name", click:true, cursor:{top:"72%",left:"72%"},
+        title:"Checked in ✓", lines:["Carlos Mendez · 6:05pm","Counted toward this week's attendance"]}
+    ]},
+
+  { id:"add-new-member", icon:"➕",
+    q:"How do I add a new member?",
+    ask:{phrase:"Add a new member"},
+    dash:[{do:"Open Members"},{do:"Click Add member"},{do:"Name and plan is enough — everything else can come later"}],
+    goto:"Members", replay:true, tags:["members","setup"],
+    cat:["People","Setup"],
+    replayFrames:[
+      {ui:"console", nav:"Members", cap:"Open Members", click:true, cursor:{top:"38%",left:"20%"},
+        title:"Members · 142", lines:["Search · filter by program","＋ Add member"]},
+      {ui:"console", nav:"Members", cap:"Click Add member", click:true, cursor:{top:"30%",left:"72%"},
+        title:"New member", lines:["Name: Ana Ribeiro","Plan: Adult Unlimited"]},
+      {ui:"console", nav:"Members", cap:"Name and plan is enough — save", click:true, cursor:{top:"78%",left:"70%"},
+        title:"Member added ✓", lines:["Ana Ribeiro · Adult Unlimited","Fill in the rest whenever you like"]}
+    ]},
+
+  { id:"whos-at-risk", icon:"⚠️",
+    q:"How do I see who's at risk of quitting?",
+    ask:{phrase:"Who's at risk of quitting?"},
+    dash:[{do:"Open Dashboard view", hint:"📊 button in the rail"},{do:"The At-risk tile shows the count"},{do:"Click it for names and last-trained dates"}],
+    goto:"Dashboard", replay:true, tags:["members","retention"],
+    cat:["People"],
+    replayFrames:[
+      {ui:"chat", cap:"Just ask the assistant, in your words",
+        msgs:[{who:"user",text:"Who's at risk of quitting?"}]},
+      {ui:"chat", cap:"It reads retention for you…",
+        msgs:[{who:"user",text:"Who's at risk of quitting?"},{who:"bot",typing:true}]},
+      {ui:"chat", cap:"Names and last-trained dates, instantly",
+        msgs:[{who:"user",text:"Who's at risk of quitting?"},{who:"bot",card:{title:"9 members at risk",lines:["Marcus Silva · 18d no check-in","Hannah Reyes · 21d no check-in","Derek Cho · attendance down 60%"]}}]}
+    ]},
+
+  { id:"message-kids-class", icon:"📣",
+    q:"How do I message everyone in the kids class?",
+    ask:{phrase:"Message a group"},
+    dash:[{do:"Open Members"},{do:"Filter by the Kids program"},{do:"Select all, then Message"}],
+    goto:"Members", video:"media/kc-message.mp4", tags:["messaging","kids","groups"],
+    cat:["Marketing","People"],
+    videoCaption:"Sunday night. One message reaches every kids-class parent — before you lock up." },
+
+  { id:"buy-belt-for-promotion", icon:"🥋",
+    q:"How do I buy new belts for an upcoming promotion class?",
+    ask:{phrase:"Order more belts"},
+    dash:[{do:"Open Marketplace", hint:"under Pro-shop"},{do:"Find belts — your team pricing applies"},{do:"Add to order; the delivery lands in Your inventory"}],
+    goto:"Marketplace", replay:true, tags:["pro-shop","belts","promotions"],
+    cat:["Money"],
+    replayFrames:[
+      {ui:"console", nav:"Marketplace", cap:"Open Marketplace under Pro-shop", click:true, cursor:{top:"70%",left:"20%"},
+        title:"Marketplace", lines:["Gear at your team price","We find the best price & ship to your gym"]},
+      {ui:"console", nav:"Marketplace", cap:"Find belts — team pricing applies", click:true, cursor:{top:"42%",left:"68%"},
+        title:"Ranked belts", lines:["Set of 10 · team price applied","Sizes A1–A4"]},
+      {ui:"console", nav:"Marketplace", cap:"Add to order — it lands in Your inventory", click:true, cursor:{top:"78%",left:"70%"},
+        title:"Order placed ✓", lines:["10 belts on the way","Stock drops into Your inventory"]}
+    ]},
+
+  { id:"set-up-pricing", icon:"💰",
+    q:"How do I set up or change my pricing?",
+    ask:{phrase:"Show me our pricing"},
+    dash:[{do:"Open Settings"},{do:"Go to the Classes & Pricing tab"},{do:"Edit any plan — changes apply immediately"}],
+    goto:"Settings", replay:true, tags:["pricing","setup","plans"],
+    cat:["Money","Setup"],
+    replayFrames:[
+      {ui:"console", nav:"Settings", cap:"Open Settings", click:true, cursor:{top:"82%",left:"20%"},
+        title:"Settings", lines:["Gym profile","Classes & Pricing →"]},
+      {ui:"console", nav:"Settings", cap:"Go to the Classes & Pricing tab", click:true, cursor:{top:"30%",left:"70%"},
+        title:"Classes & Pricing", lines:["Adult Unlimited · $160/mo","Kids Unlimited · $120/mo"]},
+      {ui:"console", nav:"Settings", cap:"Edit any plan — changes apply immediately", click:true, cursor:{top:"78%",left:"72%"},
+        title:"Saved ✓", lines:["Adult Unlimited · $170/mo","Live for new sign-ups now"]}
+    ]},
+
+  { id:"create-marketing-post", icon:"📢",
+    q:"How do I create a marketing post?",
+    ask:{phrase:"Create a post"},
+    dash:[{do:"Open Marketing"},{do:"Pick a template image and write the message"},{do:"Post now or schedule it"}],
+    goto:"Marketing", replay:true, tags:["marketing","posts"],
+    cat:["Marketing"],
+    replayFrames:[
+      {ui:"console", nav:"Marketing", cap:"Open Marketing", click:true, cursor:{top:"58%",left:"20%"},
+        title:"Marketing", lines:["Quick post","Pick a template →"]},
+      {ui:"console", nav:"Marketing", cap:"Pick a template, write the message", click:true, cursor:{top:"42%",left:"70%"},
+        title:"New post", lines:["Template: Open mat Friday","“Bring a friend — first class free”"]},
+      {ui:"console", nav:"Marketing", cap:"Post now or schedule it", click:true, cursor:{top:"78%",left:"72%"},
+        title:"Scheduled ✓", lines:["Instagram · Fri 9:00am","Boost it later if you want"]}
+    ]},
+
+  { id:"weeks-attendance", icon:"📈",
+    q:"How do I see this week's attendance?",
+    ask:{phrase:"Who's training this week?"},
+    dash:[{do:"Open Dashboard view", hint:"📊 button in the rail"},{do:"The Attendance tile shows the weekly trend"},{do:"Click it to drill into days and classes"}],
+    goto:"Dashboard", replay:true, tags:["attendance","insights"],
+    cat:["People"],
+    replayFrames:[
+      {ui:"chat", cap:"Ask instead of hunting for the tile",
+        msgs:[{who:"user",text:"Who's training this week?"}]},
+      {ui:"chat", cap:"It totals the week for you…",
+        msgs:[{who:"user",text:"Who's training this week?"},{who:"bot",typing:true}]},
+      {ui:"chat", cap:"The weekly number, with the trend",
+        msgs:[{who:"user",text:"Who's training this week?"},{who:"bot",card:{title:"318 check-ins this week",lines:["▲ 4% vs last week","Busiest: Wed & Thu evenings","Tap to drill into days & classes"]}}]}
+    ]}
+];
+// Produce the registry for anything that wants to read it (the assistant embeds its own copy).
+window.KC = KC_ARTICLES;
+
+const CATEGORIES = ['Money','People','Front desk','Marketing','Setup'];
+// Mini sidebar for the console-style Replay frames — labels match the real owner-console NAV.
+const NAV_MINI = [['📊','Dashboard'],['🛎️','Front Desk'],['👥','Members'],['💳','Billing'],['📣','Marketing'],['🛒','Marketplace'],['⚙️','Settings']];
+
+function searchText(a){
+  return (a.q+' '+a.ask.phrase+' '+a.tags.join(' ')+' '+a.goto+' '+a.dash.map(d=>d.do+' '+(d.hint||'')).join(' ')).toLowerCase();
+}
+function validId(h){ h=(h||'').replace(/^#/,''); return KC_ARTICLES.some(a=>a.id===h)?h:null; }
+
+/* ============================================================ HEADER + HERO ============================================================ */
+function Header({onHome}){
+  const links=[['💬','Assistant','assistant-home.html'],['📊','Dashboard','owner-console.html'],['⚡','Get started','get-started.html']];
+  return <header className="sticky top-0 z-30 bg-ink/90 backdrop-blur border-b border-white/10">
+    <div className="max-w-[1100px] mx-auto px-4 h-14 flex items-center justify-between gap-3">
+      <a href="#" onClick={(e)=>{e.preventDefault();onHome();}} className="flex items-baseline gap-2 font-extrabold tracking-tight min-h-[44px] leading-[44px]">
+        <span className="text-crimson">Cia Paulista</span><span className="text-slate font-semibold text-sm">Learn</span>
+      </a>
+      <nav className="flex items-center gap-1">
+        {links.map(([ic,label,href])=>
+          <a key={href} href={href} className="min-h-[44px] px-2.5 flex items-center gap-1.5 rounded-lg text-sm text-slate hover:text-white hover:bg-white/5 transition">
+            <span aria-hidden="true">{ic}</span><span className="hidden sm:inline">{label}</span>
+          </a>)}
+      </nav>
+    </div>
+  </header>;
+}
+
+function Hero(){
+  const [imgOk,setImgOk]=useState(true);
+  return <div className="relative overflow-hidden">
+    {imgOk && <img src="media/learn-hero.jpg" alt="" onError={()=>setImgOk(false)} className="absolute inset-0 w-full h-full object-cover"/>}
+    <div className="absolute inset-0" style={{background:'linear-gradient(180deg, rgba(11,11,13,.55) 0%, rgba(11,11,13,.82) 60%, #0B0B0D 100%)'}}></div>
+    <div className="relative max-w-[1100px] mx-auto px-4 py-12 sm:py-16">
+      <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight" style={{maxWidth:'20ch'}}>Ask it, or find it — every answer, both ways.</h1>
+      <p className="mt-3 text-slate text-sm sm:text-base" style={{maxWidth:'54ch'}}>Every guide shows the one-line ask and the click-path. Pick whichever fits how you think.</p>
+    </div>
+  </div>;
+}
+
+/* ============================================================ SEARCH + CHIPS + GRID ============================================================ */
+function Toolbar({q,setQ,cat,setCat,count}){
+  return <div className="max-w-[1100px] mx-auto px-4 -mt-6 relative z-10">
+    <div className="bg-surface rounded-2xl shadow-card p-3 sm:p-4">
+      <div className="flex items-center gap-2 bg-mist rounded-xl px-3">
+        <span className="text-slate" aria-hidden="true">🔍</span>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search how-tos…  (try “paid”, “belt”, “post”)"
+          aria-label="Search guides" className="flex-1 bg-transparent py-3 outline-none text-sm min-h-[44px]"/>
+        {q && <button onClick={()=>setQ('')} aria-label="Clear search" className="text-slate hover:text-white px-2 min-h-[44px]">✕</button>}
+      </div>
+      <div className="flex gap-2 mt-3 overflow-x-auto pb-1 -mx-1 px-1">
+        {['All'].concat(CATEGORIES).map(c=>{
+          const active=(c==='All'&&!cat)||c===cat;
+          return <button key={c} onClick={()=>setCat(c==='All'?null:c)}
+            className={"shrink-0 min-h-[44px] px-3.5 rounded-full text-sm border transition "+(active?'bg-crimson text-white border-crimson':'border-white/12 text-slate hover:text-white hover:border-white/25')}>{c}</button>;
+        })}
+      </div>
+    </div>
+    <div className="text-xs text-slate mt-2 px-1">{count} guide{count===1?'':'s'}{cat?' in '+cat:''}</div>
+  </div>;
+}
+
+function ArticleCard({a,onOpen}){
+  return <button data-article={a.id} onClick={()=>onOpen(a.id)}
+    className="text-left bg-surface rounded-2xl p-4 shadow-card hover:ring-1 hover:ring-white/15 transition flex flex-col gap-3">
+    <div className="flex items-start gap-3">
+      <span className="text-2xl leading-none" aria-hidden="true">{a.icon}</span>
+      <span className="font-bold leading-snug">{a.q}</span>
+    </div>
+    <div className="mt-auto grid gap-1.5 text-[12.5px]">
+      <div className="flex items-center gap-2 text-slate min-w-0"><span className="text-good font-semibold shrink-0">⚡ Ask</span><span className="truncate">“{a.ask.phrase}”</span></div>
+      <div className="flex items-center gap-2 text-slate min-w-0"><span className="text-teal font-semibold shrink-0">📊 Browse</span><span className="truncate">Console → {a.goto}</span></div>
+    </div>
+  </button>;
+}
+
+/* ============================================================ REPLAY PLAYER (fake screen-recording, CSS/SVG only) ============================================================ */
+function Cursor({pos,click,idx}){
+  return <div className="replay-cursor" style={{top:pos.top,left:pos.left}}>
+    <div className="replay-dot"></div>
+    {click && <span key={idx} className="replay-ripple"></span>}
+  </div>;
+}
+function ConsoleMock({f}){
+  return <div className="flex h-full text-[11px]">
+    <div className="w-[38%] max-w-[132px] bg-ink/70 border-r border-white/8 py-2 overflow-hidden">
+      {NAV_MINI.map(([ic,label])=>{
+        const active=label===f.nav;
+        return <div key={label} className={"flex items-center gap-1.5 px-2 py-1.5 border-l-2 "+(active?'bg-crimson/18 text-white border-crimson font-semibold':'text-slate border-transparent')}>
+          <span aria-hidden="true">{ic}</span><span className="truncate">{label}</span>
+        </div>;
+      })}
+    </div>
+    <div className="flex-1 p-3 min-w-0">
+      <div className="font-bold text-[12px] mb-2 truncate">{f.title}</div>
+      <div className="space-y-1.5">{(f.lines||[]).map((l,i)=><div key={i} className="bg-white/5 rounded-md px-2 py-1.5 text-slate">{l}</div>)}</div>
+    </div>
+  </div>;
+}
+function ChatMock({f}){
+  return <div className="h-full p-3 flex flex-col justify-end gap-2 text-[12px]">
+    {(f.msgs||[]).map((m,i)=>{
+      if(m.card) return <div key={i} className="self-start bg-surface border border-white/10 rounded-xl rounded-tl-sm p-3" style={{maxWidth:'88%'}}>
+        <div className="font-bold mb-1 text-crimson">{m.card.title}</div>
+        <div className="space-y-1">{m.card.lines.map((l,j)=><div key={j} className="text-slate">{l}</div>)}</div>
+      </div>;
+      if(m.typing) return <div key={i} className="self-start bg-white/8 rounded-xl rounded-tl-sm px-3 py-2"><span className="replay-typing">•••</span></div>;
+      const user=m.who==='user';
+      return <div key={i} className={(user?'self-end bg-crimson text-white rounded-tr-sm':'self-start bg-white/8 text-white rounded-tl-sm')+' rounded-xl px-3 py-2'} style={{maxWidth:'88%'}}>{m.text}</div>;
+    })}
+  </div>;
+}
+function ReplayPlayer({frames}){
+  const [idx,setIdx]=useState(0);
+  const [playing,setPlaying]=useState(true);
+  useEffect(()=>{ setIdx(0); setPlaying(true); },[frames]);
+  useEffect(()=>{
+    if(!playing) return;
+    const t=setInterval(()=>setIdx(i=>(i+1)%frames.length),1700);
+    return ()=>clearInterval(t);
+  },[playing,frames]);
+  const f=frames[idx]||frames[0];
+  const isChat=f.ui==='chat';
+  return <figure className="shadow-card rounded-2xl overflow-hidden bg-surface">
+    <div className="flex items-center gap-1.5 px-3 py-2 bg-ink/70 border-b border-white/8">
+      <span className="w-2.5 h-2.5 rounded-full bg-white/15"></span><span className="w-2.5 h-2.5 rounded-full bg-white/15"></span><span className="w-2.5 h-2.5 rounded-full bg-white/15"></span>
+      <span className="text-[11px] text-slate ml-2">Replay · {isChat?'Assistant':'Console'}</span>
+      <span className="ml-auto text-[10px] text-slate/60 uppercase tracking-wide">screen replay</span>
+    </div>
+    <div className="replay-screen relative bg-ink" data-frame={idx} style={{height:'224px'}}>
+      <div key={idx} className="absolute inset-0 replay-fade">{isChat?<ChatMock f={f}/>:<ConsoleMock f={f}/>}</div>
+      {f.cursor && <Cursor pos={f.cursor} click={!!f.click} idx={idx}/>}
+    </div>
+    <figcaption className="px-3 py-2 bg-surface border-t border-white/8 flex items-center gap-3">
+      <button onClick={()=>{setIdx(0);setPlaying(true);}} title="Restart" aria-label="Restart" className="min-h-[44px] min-w-[44px] grid place-items-center text-slate hover:text-white">⏮</button>
+      <button onClick={()=>setPlaying(p=>!p)} title={playing?'Pause':'Play'} aria-label={playing?'Pause':'Play'} className="min-h-[44px] min-w-[44px] grid place-items-center text-slate hover:text-white">{playing?'⏸':'▶'}</button>
+      <div className="text-[12px] text-white flex-1 truncate">{f.cap}</div>
+      <div className="flex gap-1" aria-hidden="true">{frames.map((_,i)=><span key={i} className={"w-1.5 h-1.5 rounded-full "+(i===idx?'bg-crimson':'bg-white/20')}></span>)}</div>
+    </figcaption>
+  </figure>;
+}
+
+function VideoHero({src,caption}){
+  const [ok,setOk]=useState(true);
+  if(!ok) return <div className="bg-surface rounded-2xl shadow-card p-4 text-sm text-slate">Video unavailable — the two ways below are the real thing.</div>;
+  return <figure className="rounded-2xl overflow-hidden shadow-card bg-black">
+    <video src={src} controls muted playsInline preload="metadata" poster="media/learn-hero.jpg" onError={()=>setOk(false)}
+      className="w-full block" style={{maxHeight:'420px'}}></video>
+    <figcaption className="px-4 py-2 text-[12px] text-slate bg-surface">{caption} <span className="text-slate/60">· a mood clip, not the app — the two ways are below.</span></figcaption>
+  </figure>;
+}
+
+function Media({a}){
+  if(a.video) return <VideoHero src={a.video} caption={a.videoCaption}/>;
+  if(a.replayFrames) return <ReplayPlayer frames={a.replayFrames}/>;
+  return null;
+}
+
+/* ============================================================ THE TWO WAYS (framed as equals) ============================================================ */
+function FastWay({a}){
+  const href='assistant-home.html?ask='+encodeURIComponent(a.ask.phrase);
+  return <div className="bg-surface rounded-2xl p-5 shadow-card flex flex-col">
+    <div className="flex items-center gap-2 text-good text-xs font-bold uppercase tracking-wide"><span aria-hidden="true">⚡</span> The fast way</div>
+    <p className="text-slate text-sm mt-1">Tell the assistant, in your own words.</p>
+    <div className="mt-3 self-start bg-crimson/12 border border-crimson/30 rounded-2xl rounded-tl-sm px-4 py-3" style={{maxWidth:'100%'}}>
+      <span className="text-[15px] font-semibold">“{a.ask.phrase}”</span>
+    </div>
+    <a href={href} className="mt-4 inline-flex items-center justify-center gap-1.5 bg-crimson text-white font-semibold rounded-xl px-4 min-h-[44px] hover:brightness-95 transition">Try it →</a>
+    <div className="text-[11px] text-slate mt-2">Opens the assistant and sends it for you.</div>
+  </div>;
+}
+function BrowseWay({a}){
+  const href='owner-console.html?goto='+encodeURIComponent(a.goto);
+  return <div className="bg-surface rounded-2xl p-5 shadow-card flex flex-col">
+    <div className="flex items-center gap-2 text-teal text-xs font-bold uppercase tracking-wide"><span aria-hidden="true">📊</span> The browse way</div>
+    <p className="text-slate text-sm mt-1">Click through the dashboard.</p>
+    <ol className="mt-3 space-y-2.5 flex-1">
+      {a.dash.map((d,i)=><li key={i} className="flex gap-3">
+        <span className="shrink-0 w-6 h-6 rounded-full bg-white/8 text-slate grid place-items-center text-xs font-bold">{i+1}</span>
+        <span className="text-sm"><span className="text-white">{d.do}</span>{d.hint && <span className="block text-[12px] text-slate mt-0.5">{d.hint}</span>}</span>
+      </li>)}
+    </ol>
+    <a href={href} className="mt-4 inline-flex items-center justify-center gap-1.5 border border-white/15 text-white font-semibold rounded-xl px-4 min-h-[44px] hover:bg-white/5 transition">Walk me there →</a>
+    <div className="text-[11px] text-slate mt-2">Opens the console at {a.goto}.</div>
+  </div>;
+}
+
+function Detail({a,onBack}){
+  return <div className="max-w-[1100px] mx-auto px-4 py-6 fadeup">
+    <button onClick={onBack} className="text-sm text-slate hover:text-white min-h-[44px] inline-flex items-center gap-1">← All guides</button>
+    <div className="flex items-start gap-3 mt-1" data-detail={a.id}>
+      <span className="text-3xl leading-none" aria-hidden="true">{a.icon}</span>
+      <h1 className="text-xl sm:text-2xl font-extrabold leading-tight">{a.q}</h1>
+    </div>
+    <p className="text-slate text-sm mt-2" style={{maxWidth:'62ch'}}>Two ways to the same answer — the one-line ask, or the click-path. Use whichever fits the moment; you'll end up knowing both.</p>
+    <div className="mt-4">{<Media a={a}/>}</div>
+    <div className="grid md:grid-cols-2 gap-3 mt-4"><FastWay a={a}/><BrowseWay a={a}/></div>
+    <div className="text-center text-[12px] text-slate/70 mt-5">Same data behind both. The assistant and the console are two doors into the one gym.</div>
+  </div>;
+}
+
+/* ============================================================ DAY-ZERO FINALE (when 'learn' is the 6th quest) ============================================================
+   Same overlay as assistant-home's QuestHUD celebration — this is where it fires if the owner peeked at
+   the Learn hub last. celebrated (saved on show) is the shared guard, so it renders on exactly one page. */
+function Celebration({gymName,onClose}){
+  return <div className="fixed inset-0 z-[80] bg-black/85 grid place-items-center p-6 fadeup">
+    <div className="max-w-md w-full text-center">
+      <img src="media/gs-complete.jpg" alt="" className="w-full max-h-64 object-cover rounded-2xl mb-6 shadow-card" onError={e=>{e.target.style.display='none';}}/>
+      <div className="text-2xl font-extrabold mb-2">That's the whole system. 🥋</div>
+      <div className="text-sm text-slate mb-6">You've earned your white belt in {gymName} ops — everything else is just reps.</div>
+      <a href="assistant-home.html" className="block w-full bg-crimson text-white rounded-xl px-4 py-3 text-sm font-bold mb-3">Back to my assistant</a>
+      <button onClick={onClose} className="text-[13px] text-slate/70 hover:text-slate underline min-h-[44px]">Keep exploring the Learn hub</button>
+    </div>
+  </div>;
+}
+
+/* ============================================================ APP ============================================================ */
+function App(){
+  const [q,setQ]=useState('');
+  const [cat,setCat]=useState(null);
+  const [openId,setOpenId]=useState(()=>validId(location.hash));
+  const [celebrate,setCelebrate]=useState(false);
+
+  // First load: mark the Learn quest done + log the session. If 'learn' was the SIXTH quest, the finale
+  // fires HERE (the celebration overlay otherwise only lives in assistant-home). celebrated is the shared
+  // guard, saved the moment we show it, so it never double-fires across the two pages.
+  useEffect(()=>{
+    try{
+      if(!G) return;
+      G.init({app:'learn'});
+      G.completeQuest('learn');
+      const st=G.state();
+      if(st.completedAt && !st.celebrated){ setCelebrate(true); try{ G.save({celebrated:true}); }catch(e){} }
+    }catch(e){}
+  },[]);
+
+  // Hash routing: learn.html#paid-this-month deep-links straight to an article; back button supported.
+  useEffect(()=>{
+    const onHash=()=>setOpenId(validId(location.hash));
+    window.addEventListener('hashchange',onHash);
+    return ()=>window.removeEventListener('hashchange',onHash);
+  },[]);
+
+  // Telemetry: opening an article.
+  useEffect(()=>{
+    if(openId){ try{ if(G) G.track('view',{article:openId}); }catch(e){} try{ window.scrollTo(0,0); }catch(e){} }
+  },[openId]);
+
+  // Telemetry: search queries (debounced so we don't log every keystroke).
+  useEffect(()=>{
+    if(!q || q.trim().length<2) return;
+    const t=setTimeout(()=>{ try{ if(G) G.track('view',{search:q.trim().slice(0,40)}); }catch(e){} },600);
+    return ()=>clearTimeout(t);
+  },[q]);
+
+  const results=useMemo(()=>{
+    const needle=q.trim().toLowerCase();
+    return KC_ARTICLES.filter(a=>{
+      if(cat && (a.cat||[]).indexOf(cat)===-1) return false;
+      if(needle && searchText(a).indexOf(needle)===-1) return false;
+      return true;
+    });
+  },[q,cat]);
+
+  const open=useCallback((id)=>{
+    setOpenId(id);
+    if(validId(location.hash)!==id){ try{ location.hash=id; }catch(e){} }
+  },[]);
+  const back=useCallback(()=>{
+    setOpenId(null);
+    try{ history.replaceState(null,'',location.pathname+location.search); }
+    catch(e){ try{ location.hash=''; }catch(e2){} }
+  },[]);
+
+  const art=openId?KC_ARTICLES.filter(a=>a.id===openId)[0]:null;
+
+  return <div className="min-h-screen flex flex-col">
+    <Header onHome={back}/>
+    <div className="flex-1">
+      {art
+        ? <Detail a={art} onBack={back}/>
+        : <React.Fragment>
+            <Hero/>
+            <Toolbar q={q} setQ={setQ} cat={cat} setCat={setCat} count={results.length}/>
+            <div className="max-w-[1100px] mx-auto px-4 py-6">
+              {results.length
+                ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{results.map(a=><ArticleCard key={a.id} a={a} onOpen={open}/>)}</div>
+                : <div className="text-center text-slate py-16">No guides match “{q}”. <button onClick={()=>{setQ('');setCat(null);}} className="text-crimson underline min-h-[44px]">Clear filters</button></div>}
+            </div>
+          </React.Fragment>}
+    </div>
+    <footer className="max-w-[1100px] mx-auto w-full px-4 py-8 text-[12px] text-slate/70 border-t border-white/8 mt-6 safe-b">
+      Cia Paulista · Learn — every answer, both ways. Nothing you do here is sent to a server.
+    </footer>
+    {celebrate && <Celebration gymName={(G&&G.state().gymName)||'Cia Paulista'} onClose={()=>setCelebrate(false)}/>}
+  </div>;
+}
+
+// Light test/debug hook (mirrors the house pattern of exposing a window handle).
+window.__learn = { count: KC_ARTICLES.length, ids: KC_ARTICLES.map(a=>a.id) };
+
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={};}
+  static getDerivedStateFromError(err){return {err};}
+  componentDidCatch(err){if(window.__showFatal)window.__showFatal('The page crashed',(err&&err.stack)||String(err));}
+  render(){return this.state.err?null:this.props.children;}
+}
+try{ ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>); }
+catch(e){ if(window.__showFatal) window.__showFatal('Failed to start',(e&&e.stack)||String(e)); else throw e; }
+</script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="get-started.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='staging'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the sticky skip bar) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Chain Lightning — Get Started</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<!-- env.js must load FIRST: everything after it can read CP.env to tell live from staging
+     from a local/jsdom dev run. -->
+<script src="env.js"></script>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script>Babel.registerPreset("classic",{presets:[[Babel.availablePresets["react"],{runtime:"classic"}]]});</script>
+<script src="vendor/tailwind.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#E9E9EE', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', teal:'#38BDF8',
+    ink:'#0B0B0D', surface:'#151517'
+  }}}}
+</script>
+<style>
+  html{scrollbar-gutter:stable}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* ===== Tatame — dark performance theme (red / black / white / gray) ===== */
+  .tatame{background:#0B0B0D;color:#F3F3F5}
+  .tatame .shadow-card{box-shadow:0 0 0 1px rgba(255,255,255,.07),0 12px 32px -14px rgba(0,0,0,.75)}
+  .tatame .bg-white{background:#151517}
+  .tatame .text-navy{color:#F3F3F5}
+  .tatame .bg-navy{background:#2A2A2F}
+  .tatame .shadow-card.border-crimson{box-shadow:0 0 0 1px rgba(225,29,42,.35),0 16px 44px -18px rgba(225,29,42,.85)}
+  .tatame input,.tatame select,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+  .field:focus{outline:none;border-color:rgba(225,29,42,.55);box-shadow:0 0 0 3px rgba(225,29,42,.14)}
+  @keyframes __spin{to{transform:rotate(360deg)}}
+  @keyframes __fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .fadeup{animation:__fadeup .34s ease both}
+  @keyframes __fadein{from{opacity:0}to{opacity:1}}
+  .fadein{animation:__fadein .5s ease both}
+  @keyframes __grow{from{transform:scaleY(.2)}to{transform:scaleY(1)}}
+  @keyframes __draw{to{stroke-dashoffset:0}}
+  @keyframes __floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+  @keyframes __shimmer{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes __slidein{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+  .slidein{animation:__slidein .4s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes __blink{0%,100%{opacity:.25}50%{opacity:1}}
+  @keyframes __kenburns{from{transform:scale(1.02)}to{transform:scale(1.12)}}
+  @keyframes __glowpulse{0%,100%{opacity:.5}50%{opacity:.85}}
+</style>
+</head>
+<body class="text-navy tatame">
+<div id="root"><div id="__boot" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B0B0D;color:#9a9aa2;font:600 14px/1.5 ui-sans-serif,system-ui,sans-serif">
+  <div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.12);border-top-color:#E11D2A;border-radius:50%;animation:__spin .8s linear infinite"></div>
+  <div>Getting things ready…</div>
+</div></div>
+<!-- ===== Safety net: never show a silent blank page again ===== -->
+<script>
+(function(){
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function panel(title,detail){
+    var r=document.getElementById('root'); if(!r) return;
+    r.innerHTML='<div style="max-width:780px;margin:7vh auto;padding:28px 32px;font:14px/1.6 ui-sans-serif,system-ui,sans-serif;'
+      +'background:#151517;color:#f3f3f5;border:1px solid rgba(225,29,42,.45);border-radius:16px;box-shadow:0 20px 60px -20px #000">'
+      +'<div style="font-weight:800;font-size:18px;color:#ff5a5f;margin-bottom:6px">⚠ '+esc(title)+'</div>'
+      +'<div style="color:#9a9aa2;margin-bottom:14px">The page hit a problem while loading — it caught it instead of going blank. Send me this text and I’ll fix it.</div>'
+      +'<pre style="white-space:pre-wrap;background:#0b0b0d;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;color:#e8e8ec;overflow:auto;max-height:55vh">'+esc(detail)+'</pre></div>';
+  }
+  window.__showFatal=panel;
+  window.addEventListener('error',function(e){
+    if(e&&e.message&&/^Script error/i.test(e.message))return;
+    panel('JavaScript error',(e.error&&e.error.stack)?e.error.stack:(e.message+'\n'+(e.filename||'')+':'+(e.lineno||'')));
+  });
+  window.addEventListener('unhandledrejection',function(e){
+    panel('Unhandled promise rejection',(e.reason&&e.reason.stack)?e.reason.stack:String(e.reason));
+  });
+  window.addEventListener('DOMContentLoaded',function(){
+    var miss=[];
+    if(typeof React==='undefined')miss.push('React  — vendor/react.production.min.js');
+    if(typeof ReactDOM==='undefined')miss.push('ReactDOM  — vendor/react-dom.production.min.js');
+    if(typeof Babel==='undefined')miss.push('Babel  — vendor/babel.min.js');
+    if(typeof window.Guide==='undefined')miss.push('Guide  — guide.js');
+    if(miss.length)panel('A required library failed to load','Missing:\n  • '+miss.join('\n  • ')+'\n\nMake sure the "vendor" folder and guide.js are next to this HTML file.');
+  });
+  setTimeout(function(){
+    if(document.getElementById('__boot')) panel('The page did not start',
+      'Scripts loaded but React never mounted within 10s.\nThis is almost always a JSX syntax error in the page script.\nOpen DevTools (F12) → Console for the exact red error, or send me your last edit.');
+  },10000);
+})();
+</script>
+<script src="guide.js"></script>
+<script type="text/babel" data-presets="classic">
+const {useState,useEffect,useRef}=React;
+
+/* ============================================================ SETUP ============================================================ */
+const QS = new URLSearchParams(location.search);
+const DEFAULT_NAME='Marcelo', DEFAULT_GYM='Cia Paulista';
+
+/* ---- Environment (env.js; contract in docs/.../2026-07-21-staging-live-split.md) ----
+   LIVE is the only mode a real gym owner can land in, so it is the only mode that must
+   never fake a backend it doesn't have. Everything else (staging preview, jsdom/dev)
+   keeps the full simulation — that path is what the day-zero suites drive. */
+const IS_LIVE = (()=>{ try{ return !!(window.CP && window.CP.env && window.CP.env.isLive); }catch(e){ return false; } })();
+
+/* ---- SMS environment -----------------------------------------------------------------
+   There is no SMS provider wired (phone auth is switched off on the backend), so
+   "we texted you a 6-digit code" is a simulation, and the number typed on the phone step
+   is never stored or sent anywhere. On LIVE both of those steps are removed from the flow:
+   the page never claims a text was sent and never collects a number that goes nowhere.
+   Signup is name + academy, and that is the honest whole of it.
+   NON-LIVE (staging preview, jsdom/dev) keeps all four steps exactly as they are today. */
+const SIGNUP_STEPS = 4;            // 0 name · 1 academy · 2 phone · 3 code
+const SKIPPED = IS_LIVE ? [2,3] : [];
+const VISIBLE_STEPS = Array.from({length:SIGNUP_STEPS},(_,i)=>i).filter(i=>SKIPPED.indexOf(i)<0);
+const REDUCE = (()=>{ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(e){ return false; } })();
+
+// Route wrapper — records the intended destination (so headless tests can assert it even though
+// jsdom can't actually navigate) then hands off to the browser.
+function go(url){ try{ window.__lastNav=url; }catch(e){} try{ window.location.href=url; }catch(e){} }
+
+Guide.init({app:'getstarted'});
+
+/* ============================================================ SMALL PIECES ============================================================ */
+function Img({src,alt,className,style}){
+  return <img src={src} alt={alt||''} className={className} style={style}
+    onError={e=>{e.currentTarget.style.display='none';}} />;
+}
+function Primary({children,className='',...p}){
+  return <button {...p} className={"w-full bg-crimson text-white font-semibold rounded-2xl py-4 text-[16px] min-h-[52px] shadow-[0_10px_30px_-10px_rgba(225,29,42,.7)] disabled:opacity-35 disabled:shadow-none disabled:cursor-not-allowed active:scale-[.99] transition "+className}>{children}</button>;
+}
+function Ghost({children,className='',...p}){
+  return <button {...p} className={"w-full border border-white/15 text-navy font-semibold rounded-2xl py-4 text-[15px] min-h-[52px] hover:bg-white/5 active:scale-[.99] transition "+className}>{children}</button>;
+}
+function Eyebrow({children}){
+  return <div className="text-[11px] font-bold tracking-[0.28em] text-crimson mb-4 uppercase">{children}</div>;
+}
+function BackBtn({onClick}){
+  return <button onClick={onClick} aria-label="Back"
+    className="w-11 h-11 grid place-items-center rounded-full bg-white/5 border border-white/10 text-slate hover:text-white hover:bg-white/10 transition text-lg">←</button>;
+}
+function StepDots({total,at}){
+  return <div className="flex gap-1.5">{Array.from({length:total}).map((_,i)=>
+    <span key={i} className={"h-1.5 rounded-full transition-all "+(i===at?'w-6 bg-crimson':i<at?'w-2.5 bg-crimson/60':'w-2.5 bg-white/15')}></span>)}</div>;
+}
+// A count-up number that honors reduced-motion (jumps straight to the target).
+function Counter({to,dur=1200}){
+  const [v,setV]=useState(REDUCE?to:0);
+  useEffect(()=>{
+    if(REDUCE){ setV(to); return; }
+    let raf, start=null;
+    const step=ts=>{ if(start===null)start=ts; const p=Math.min(1,(ts-start)/dur);
+      setV(Math.round(to*(1-Math.pow(1-p,3)))); if(p<1) raf=requestAnimationFrame(step); };
+    raf=requestAnimationFrame(step);
+    return ()=>{ if(raf) cancelAnimationFrame(raf); };
+  },[to]);
+  return <span>{v.toLocaleString()}</span>;
+}
+
+/* ============================================================ THE "TWO WAYS" MICRO-DEMO ============================================================
+   Same question, two honest paths. Ask-it = chat bubbles typing then an answer card sliding in.
+   Browse-it = mini dashboard tiles then a drill-down list. Pure CSS/SVG, no canvas, no libs.
+   Both resolve to the SAME three overdue members, so the demo proves they reach one answer. */
+const OVERDUE=[
+  {n:'Aisha Khan',amt:200,why:'Card expired'},
+  {n:'Marcus Silva',amt:165,why:'Insufficient funds'},
+  {n:'Omar Haddad',amt:165,why:'Card declined'},
+];
+const QUESTION="Who hasn't paid this month?";
+
+function AskDemo(){
+  // phase 0: question bubble · 1: typing · 2: answer card
+  const [phase,setPhase]=useState(REDUCE?2:0);
+  useEffect(()=>{
+    if(REDUCE) return;
+    const a=setTimeout(()=>setPhase(1),520);
+    const b=setTimeout(()=>setPhase(2),1500);
+    return ()=>{clearTimeout(a);clearTimeout(b);};
+  },[]);
+  return <div className="rounded-2xl bg-black/30 border border-white/10 p-3.5 min-h-[260px] flex flex-col gap-2.5">
+    {/* user asks */}
+    <div className="self-end max-w-[85%] bg-crimson text-white rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] font-medium slidein">{QUESTION}</div>
+    {/* assistant typing / answer */}
+    {phase===1 && <div className="self-start bg-white/8 rounded-2xl rounded-bl-md px-3.5 py-2.5 flex gap-1 slidein">
+      <span className="w-1.5 h-1.5 rounded-full bg-slate" style={{animation:'__blink 1s infinite'}}></span>
+      <span className="w-1.5 h-1.5 rounded-full bg-slate" style={{animation:'__blink 1s .2s infinite'}}></span>
+      <span className="w-1.5 h-1.5 rounded-full bg-slate" style={{animation:'__blink 1s .4s infinite'}}></span>
+    </div>}
+    {phase===2 && <div className="self-start w-full slidein">
+      <div className="bg-white/8 rounded-2xl rounded-bl-md px-3.5 py-2.5 text-[13px] text-navy">
+        <b>3 members</b> are overdue this month — <b>$530</b> outstanding.
+      </div>
+      <div className="mt-2 rounded-xl bg-white/[.04] border border-white/10 divide-y divide-white/5 overflow-hidden">
+        {OVERDUE.map((m,i)=><div key={i} className="flex items-center justify-between px-3 py-2 text-[12px]">
+          <span className="text-navy font-medium">{m.n}</span>
+          <span className="text-slate">${m.amt} · {m.why}</span>
+        </div>)}
+      </div>
+      <button className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-crimson bg-crimson/10 border border-crimson/30 rounded-full px-3 py-1.5">💬 Message all 3 →</button>
+    </div>}
+  </div>;
+}
+
+function BrowseDemo(){
+  // phase 0: tiles · 1: highlight Overdue · 2: drill-down list
+  const [phase,setPhase]=useState(REDUCE?2:0);
+  useEffect(()=>{
+    if(REDUCE) return;
+    const a=setTimeout(()=>setPhase(1),760);
+    const b=setTimeout(()=>setPhase(2),1560);
+    return ()=>{clearTimeout(a);clearTimeout(b);};
+  },[]);
+  const tiles=[
+    {l:'Revenue',v:'$21.2k',c:'text-navy'},
+    {l:'Active',v:'142',c:'text-navy'},
+    {l:'Overdue',v:'3',c:'text-crimson'},
+  ];
+  return <div className="rounded-2xl bg-black/30 border border-white/10 p-3.5 min-h-[260px]">
+    <div className="flex items-center justify-between mb-2.5">
+      <div className="h-2 w-16 rounded bg-white/15"></div>
+      <div className="text-[10px] text-slate">Dashboard</div>
+    </div>
+    <div className="grid grid-cols-3 gap-2 mb-3">
+      {tiles.map((t,i)=><div key={i}
+        className={"rounded-xl p-2.5 border transition-all "+(t.l==='Overdue'&&phase>=1?'bg-crimson/15 border-crimson/50 ring-2 ring-crimson/30':'bg-white/[.04] border-white/10')}>
+        <div className="text-[10px] text-slate mb-0.5">{t.l}</div>
+        <div className={"text-lg font-extrabold leading-none "+t.c}>{t.v}</div>
+      </div>)}
+    </div>
+    {phase>=1 && <div className="text-[11px] text-slate mb-2 slidein">↳ tapped <b className="text-navy">Overdue</b> → <b className="text-navy">Billing</b></div>}
+    {phase>=2 ? <div className="rounded-xl bg-white/[.04] border border-white/10 divide-y divide-white/5 overflow-hidden slidein">
+      {OVERDUE.map((m,i)=><div key={i} className="flex items-center justify-between px-3 py-2 text-[12px]">
+        <span className="text-navy font-medium">{m.n}</span>
+        <span className="text-slate">${m.amt} · {m.why}</span>
+      </div>)}
+    </div> : <div className="rounded-xl bg-white/[.03] border border-dashed border-white/10 h-[92px] grid place-items-center text-[11px] text-slate">Start high · click into anything</div>}
+  </div>;
+}
+
+function TwoWaysDemo(){
+  const [mode,setMode]=useState('ask');
+  const [replay,setReplay]=useState(0);
+  return <div className="rounded-3xl bg-white/[.03] border border-white/10 p-4 sm:p-5">
+    <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+      <div className="text-[13px] text-slate">Same question, both ways:</div>
+      <div className="text-[13px] font-semibold text-navy">"{QUESTION}"</div>
+    </div>
+    <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/30 rounded-2xl mb-3">
+      <button onClick={()=>setMode('ask')}
+        className={"rounded-xl py-2.5 text-[13px] font-semibold min-h-[44px] transition "+(mode==='ask'?'bg-crimson text-white shadow-[0_8px_20px_-8px_rgba(225,29,42,.7)]':'text-slate hover:text-white')}>💬 Ask it</button>
+      <button onClick={()=>setMode('browse')}
+        className={"rounded-xl py-2.5 text-[13px] font-semibold min-h-[44px] transition "+(mode==='browse'?'bg-white/12 text-white':'text-slate hover:text-white')}>📊 Browse it</button>
+    </div>
+    <div className="flex justify-end -mt-1 mb-2">
+      <button onClick={()=>setReplay(r=>r+1)}
+        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate hover:text-white px-2 py-1 rounded-full hover:bg-white/5 transition">▸ Replay</button>
+    </div>
+    {mode==='ask' ? <AskDemo key={"ask"+replay}/> : <BrowseDemo key={"browse"+replay}/>}
+    <div className="mt-3 text-[12px] text-slate text-center">
+      {mode==='ask'
+        ? <span><b className="text-navy">One line in, answer + action out.</b> No menus, no hunting.</span>
+        : <span><b className="text-navy">Start high, drill into anything.</b> A few taps, full context.</span>}
+    </div>
+  </div>;
+}
+
+/* ============================================================ SCREENS ============================================================ */
+
+// ---- HERO ----
+function Hero({onStart}){
+  return <section className="relative min-h-screen w-full overflow-hidden flex flex-col">
+    {/* background media under a dark gradient */}
+    <div className="absolute inset-0 overflow-hidden">
+      <Img src="media/gs-hero.jpg" alt="" className="absolute inset-0 w-full h-full object-cover"
+        style={REDUCE?null:{animation:'__kenburns 22s ease-in-out infinite alternate'}}/>
+      {!REDUCE && <video autoPlay muted loop playsInline poster="media/gs-hero.jpg" preload="metadata"
+        className="absolute inset-0 w-full h-full object-cover"
+        onError={e=>{e.currentTarget.style.display='none';}}>
+        <source src="media/gs-hero.mp4" type="video/mp4"/>
+      </video>}
+      <div className="absolute inset-0" style={{background:'linear-gradient(180deg, rgba(11,11,13,.55) 0%, rgba(11,11,13,.30) 38%, rgba(11,11,13,.86) 82%, rgba(11,11,13,.97) 100%)'}}></div>
+      {/* one restrained crimson glow */}
+      <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full pointer-events-none"
+        style={{background:'radial-gradient(circle, rgba(225,29,42,.28), transparent 62%)',animation:REDUCE?null:'__glowpulse 6s ease-in-out infinite'}}></div>
+    </div>
+    {/* content */}
+    <div className="relative flex-1 flex flex-col justify-end px-6 md:px-12 pb-28 pt-16 max-w-3xl md:max-w-4xl mx-auto w-full sm:justify-center sm:pb-40">
+      <div className="fadeup">
+        <Eyebrow>Chain Lightning ⚡</Eyebrow>
+        <h1 className="text-[40px] leading-[1.05] sm:text-6xl md:text-7xl font-extrabold tracking-tight">The gym that runs on conversation.</h1>
+        <p className="mt-5 text-[16px] sm:text-lg text-slate max-w-xl leading-relaxed">Your front desk, your bookkeeper, and your analyst — one conversation away. Set up in three minutes, nothing to configure.</p>
+        <div className="mt-8 max-w-sm">
+          <Primary onClick={onStart}>Get started</Primary>
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
+// ---- SIGNUP (4 mini-steps) ----
+function Signup({name,setName,gym,setGym,phone,setPhone,onDone,onBack}){
+  const [step,setStep]=useState(VISIBLE_STEPS[0]);
+  const [code,setCode]=useState('');
+  const digits=phone.replace(/\D/g,'');
+  // Travel over the steps THIS environment actually has, in either direction; the last
+  // visible step finishes the signup (on live that's the academy step).
+  const at=VISIBLE_STEPS.indexOf(step);
+  const back=()=>{ if(at<=0){onBack();} else setStep(VISIBLE_STEPS[at-1]); };
+  const finish=()=>onDone();
+  const next=()=>{ if(at>=VISIBLE_STEPS.length-1){ finish(); } else setStep(VISIBLE_STEPS[at+1]); };
+
+  const H='text-3xl md:text-4xl font-extrabold tracking-tight';
+  const INP='field w-full rounded-2xl border border-white/14 px-4 py-3.5 md:py-4 text-[16px] md:text-[17px] mb-6';
+  const steps=[
+    // 0 — name
+    <div key="0" className="fadeup">
+      <h2 className={H}>First — the person in charge.</h2>
+      <p className="text-slate mt-2 mb-6 md:text-[17px]">The academy has a name. So does its owner.</p>
+      <label className="block text-[13px] text-slate mb-1.5">Your name</label>
+      <input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Marcelo"
+        onKeyDown={e=>{if(e.key==='Enter'&&name.trim())next();}}
+        className={INP}/>
+      <Primary disabled={!name.trim()} onClick={next}>Continue</Primary>
+    </div>,
+    // 1 — gym
+    <div key="1" className="fadeup">
+      <h2 className={H}>And your academy?</h2>
+      <p className="text-slate mt-2 mb-6 md:text-[17px]">This is the name your members will see.</p>
+      <label className="block text-[13px] text-slate mb-1.5">Academy name</label>
+      <input autoFocus value={gym} onChange={e=>setGym(e.target.value)} placeholder="Cia Paulista"
+        onKeyDown={e=>{if(e.key==='Enter'&&gym.trim())next();}}
+        className={INP}/>
+      <Primary disabled={!gym.trim()} onClick={next}>Continue</Primary>
+    </div>,
+    // 2 — phone  (NON-LIVE ONLY — see SKIPPED above)
+    <div key="2" className="fadeup">
+      <h2 className={H}>Your phone is your key.</h2>
+      <p className="text-slate mt-2 mb-6 md:text-[17px]">No passwords, ever. We text a code — that's the whole login.</p>
+      <label className="block text-[13px] text-slate mb-1.5">Mobile number</label>
+      <input autoFocus type="tel" inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(626) 555-0134"
+        onKeyDown={e=>{if(e.key==='Enter'&&digits.length>=10)next();}}
+        className={INP}/>
+      <Primary disabled={digits.length<10} onClick={next}>Text me a code</Primary>
+      <p className="text-[12px] text-slate/70 mt-3 text-center">By continuing you agree to receive account texts. Reply STOP to opt out.</p>
+    </div>,
+    // 3 — code  (NON-LIVE ONLY — nothing here can send a text)
+    <div key="3" className="fadeup">
+      <h2 className={H}>Enter the code.</h2>
+      <p className="text-slate mt-2 mb-6 md:text-[17px]">We sent a 6-digit code to <b className="text-navy">{phone||'your phone'}</b>.</p>
+      <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+        inputMode="numeric" placeholder="• • • • • •" autoFocus
+        onKeyDown={e=>{if(e.key==='Enter'&&code.length===6)finish();}}
+        className="field w-full text-center tracking-[0.5em] text-2xl md:text-3xl font-bold rounded-2xl border border-white/14 py-4 md:py-5 mb-4"/>
+      <Primary disabled={code.length<6} onClick={next}>Verify & continue</Primary>
+      <button onClick={()=>setCode('123456')} className="w-full text-[14px] text-slate hover:text-white mt-3 underline min-h-[44px]">Demo: autofill code</button>
+    </div>,
+  ];
+
+  // Tablet: the form column stays readable (max-w-md) but the page around it breathes —
+  // wider gutters, roomier top/bottom, larger type — instead of a phone-sized strip
+  // marooned in the middle of an iPad.
+  return <section className="min-h-screen w-full flex flex-col px-6 md:px-12 pt-6 md:pt-10 pb-32 max-w-md md:max-w-2xl mx-auto">
+    <div className="flex items-center gap-4 mb-10 md:mb-14">
+      <BackBtn onClick={back}/>
+      <StepDots total={VISIBLE_STEPS.length} at={at}/>
+    </div>
+    <div className="flex-1 flex flex-col justify-center">
+      <div className="w-full max-w-md md:mx-auto">{steps[step]}</div>
+    </div>
+  </section>;
+}
+
+// ---- CONCIERGE MOMENT ----
+function Concierge({gymV,onNext,onBack}){
+  const stats=[
+    {big:<Counter to={142}/>, unit:'members', tail:'imported'},
+    {big:<Counter to={28}/>, unit:'weekly classes', tail:'scheduled'},
+    {big:<Counter to={12}/>, unit:'months', tail:'of payment history'},
+    {big:'✓', unit:'every belt & stripe', tail:'tracked'},
+  ];
+  return <section className="min-h-screen w-full flex flex-col px-6 md:px-12 pt-6 md:pt-10 pb-32 max-w-2xl md:max-w-3xl mx-auto">
+    <TopBar onBack={onBack} step={1}/>
+    <div className="flex-1 flex flex-col justify-center py-6">
+      <div className="fadeup">
+        <div className="rounded-3xl overflow-hidden border border-white/10 mb-7 relative h-40 sm:h-48 md:h-64">
+          <Img src="media/gs-concierge.jpg" alt="Reception desk" className="absolute inset-0 w-full h-full object-cover"/>
+          <div className="absolute inset-0" style={{background:'linear-gradient(180deg, rgba(11,11,13,.15), rgba(11,11,13,.75))'}}></div>
+        </div>
+        <Eyebrow>While you typed</Eyebrow>
+        <h2 className="text-[34px] sm:text-5xl font-extrabold tracking-tight leading-[1.05]">Leave the heavy lifting to us.</h2>
+        <p className="text-slate mt-3 md:text-[17px]">{gymV} didn't start from an empty screen. Here's what was waiting:</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-6">
+          {stats.map((s,i)=><div key={i} className="bg-white rounded-2xl p-4 md:p-5 shadow-card slidein" style={{animationDelay:(i*0.08)+'s'}}>
+            <div className="text-3xl sm:text-4xl font-extrabold tracking-tight text-navy">{s.big}</div>
+            <div className="text-[13px] font-semibold text-navy mt-1">{s.unit}</div>
+            <div className="text-[12px] text-slate">{s.tail}</div>
+          </div>)}
+        </div>
+        {/* Live honesty: these four numbers are the sample academy this tour runs on, not
+            anything imported for the person reading. Say so where they're shown. */}
+        {IS_LIVE && <p className="text-[12px] text-slate/70 mt-3">These are the sample academy's numbers — this tour runs on example data.</p>}
+        <p className="text-[13px] md:text-[14px] text-slate mt-6 leading-relaxed border-l-2 border-crimson/40 pl-4">This is how real onboarding works too — you hand us your spreadsheets and schedules, our team does the rest. You never start from an empty screen.</p>
+        <div className="mt-8 max-w-sm"><Primary onClick={onNext}>See how you'll run it</Primary></div>
+      </div>
+    </div>
+  </section>;
+}
+
+// ---- CHAPTER: TWO WAYS ----
+function WaysChapter({onNext,onBack}){
+  return <section className="min-h-screen w-full flex flex-col px-6 md:px-12 pt-6 md:pt-10 pb-32 max-w-3xl md:max-w-4xl mx-auto">
+    <TopBar onBack={onBack} step={2}/>
+    <div className="flex-1 py-6">
+      <div className="fadeup">
+        <Eyebrow>The big idea</Eyebrow>
+        <h2 className="text-[34px] sm:text-5xl font-extrabold tracking-tight leading-[1.05]">One gym. Two ways to work it.</h2>
+        <div className="grid sm:grid-cols-2 gap-4 md:gap-5 mt-7">
+          {/* Assistant card */}
+          <div className="bg-white rounded-3xl shadow-card overflow-hidden border-crimson">
+            <div className="relative h-36">
+              <Img src="media/gs-assistant.jpg" alt="Coach with glowing phone" className="absolute inset-0 w-full h-full object-cover object-top"/>
+              <div className="absolute inset-0" style={{background:'linear-gradient(180deg, rgba(11,11,13,.1), rgba(21,21,23,.9))'}}></div>
+              <div className="absolute bottom-3 left-4 text-2xl">💬</div>
+            </div>
+            <div className="p-5">
+              <h3 className="font-bold text-navy text-lg">Assistant view — Ask. It answers.</h3>
+              <p className="text-[14px] text-slate mt-2 leading-relaxed">{"For when you know what you want: 'Who hasn't paid this month?' One line in, answer + action out. No menus, no hunting."}</p>
+            </div>
+          </div>
+          {/* Dashboard card */}
+          <div className="bg-white rounded-3xl shadow-card overflow-hidden">
+            <div className="relative h-36">
+              <Img src="media/gs-dashboard.jpg" alt="Tablet dashboard" className="absolute inset-0 w-full h-full object-cover"/>
+              <div className="absolute inset-0" style={{background:'linear-gradient(180deg, rgba(11,11,13,.1), rgba(21,21,23,.9))'}}></div>
+              <div className="absolute bottom-3 left-4 text-2xl">📊</div>
+            </div>
+            <div className="p-5">
+              <h3 className="font-bold text-navy text-lg">Dashboard view — Browse. Drill down.</h3>
+              <p className="text-[14px] text-slate mt-2 leading-relaxed">{"For when you want to look around: today's check-ins, revenue trends, who's at risk. Start high, click into anything."}</p>
+            </div>
+          </div>
+        </div>
+        {/* interactive demo */}
+        <div className="mt-5"><TwoWaysDemo/></div>
+        {/* rule of thumb */}
+        <div className="mt-5 rounded-2xl bg-crimson/[.07] border border-crimson/25 px-4 py-3.5 text-[14px] text-navy leading-relaxed">
+          <b>Rule of thumb:</b> Know the question → Assistant. Exploring → Dashboard. Same gym, switch anytime with one tap.
+        </div>
+        <div className="mt-8 max-w-sm"><Primary onClick={onNext}>I'm ready — let's do it</Primary></div>
+      </div>
+    </div>
+  </section>;
+}
+
+// ---- CHAPTER: QUESTS PREVIEW + FINISH ----
+function QuestsChapter({onFinish,onBack}){
+  const quests=Guide.QUESTS;
+  return <section className="min-h-screen w-full flex flex-col px-6 md:px-12 pt-6 md:pt-10 pb-32 max-w-xl md:max-w-3xl mx-auto">
+    <TopBar onBack={onBack} step={3}/>
+    <div className="flex-1 flex flex-col justify-center py-6">
+      <div className="fadeup">
+        <Eyebrow>Three minutes</Eyebrow>
+        <h2 className="text-[34px] sm:text-5xl font-extrabold tracking-tight leading-[1.05]">Don't read about it. Do it.</h2>
+        <p className="text-slate mt-3 md:text-[17px]">Six small wins, about three minutes. When you're done you'll have touched everything that matters.</p>
+        <div className="mt-6 space-y-2.5 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+          {quests.map((q,i)=><div key={q.id} className="flex items-center gap-3.5 bg-white rounded-2xl p-3.5 md:p-4 shadow-card slidein" style={{animationDelay:(i*0.06)+'s'}}>
+            <div className="w-10 h-10 shrink-0 rounded-full bg-white/5 border border-white/10 grid place-items-center text-lg">{q.icon}</div>
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-navy text-[15px]">{q.title}</div>
+              <div className="text-[12px] text-slate truncate">{q.hint}</div>
+            </div>
+            <div className="w-6 h-6 shrink-0 rounded-full border-2 border-white/15"></div>
+          </div>)}
+        </div>
+        <div className="mt-8 md:max-w-sm"><Primary onClick={onFinish}>Start with a question →</Primary></div>
+        <p className="text-[12px] text-slate/70 text-center md:text-left mt-3 md:max-w-sm">You can stop anytime — the ✓ guide keeps your place.</p>
+      </div>
+    </div>
+  </section>;
+}
+
+// ---- RETURNING VISITOR ----
+function AllSet({name,onReset}){
+  return <section className="min-h-screen w-full flex flex-col items-center justify-center px-6 md:px-12 py-16 max-w-md md:max-w-lg mx-auto text-center relative overflow-hidden">
+    <div className="absolute -top-24 w-[360px] h-[360px] rounded-full pointer-events-none"
+      style={{background:'radial-gradient(circle, rgba(225,29,42,.22), transparent 62%)'}}></div>
+    <div className="relative fadeup w-full">
+      <div className="w-20 h-20 rounded-full bg-crimson/15 border border-crimson/40 grid place-items-center text-4xl mx-auto mb-6">🥋</div>
+      <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">You're all set, {name}.</h1>
+      <p className="text-slate mt-3 mb-8">Everything's ready. Jump straight into how you run the gym.</p>
+      <div className="space-y-3">
+        <Primary onClick={()=>go('assistant-home.html')}>💬 Assistant view</Primary>
+        <Ghost onClick={()=>go('owner-console.html')}>📊 Dashboard view</Ghost>
+        <Ghost onClick={()=>go('learn.html')}>🎓 Learn hub</Ghost>
+      </div>
+      {/* "Reset demo" is demo language. On live the same control is honest about what it
+          does: it clears what you typed on this device. */}
+      <button onClick={onReset} className="text-[13px] text-slate/70 hover:text-slate mt-8 underline min-h-[44px]">{IS_LIVE?'Start over':'Reset demo'}</button>
+    </div>
+  </section>;
+}
+
+// shared chapter top bar (back + journey progress)
+function TopBar({onBack,step}){
+  return <div className="flex items-center justify-between gap-4 mb-2">
+    <BackBtn onClick={onBack}/>
+    <div className="flex items-center gap-2 text-[12px] text-slate">
+      <span className="font-semibold text-navy">Step {step}</span> of 3
+      <StepDots total={3} at={step-1}/>
+    </div>
+  </div>;
+}
+
+// sticky skip footer — present on every screen except the returning-visitor one
+function SkipFooter({onSkip}){
+  return <div className="fixed bottom-0 inset-x-0 z-30 safe-b pointer-events-none">
+    <div className="max-w-3xl mx-auto px-6 pb-3 flex justify-center">
+      <button onClick={onSkip}
+        className="pointer-events-auto text-[12.5px] text-slate/70 hover:text-slate bg-ink/70 backdrop-blur border border-white/8 rounded-full px-4 py-2 min-h-[44px] transition">
+        Skip the tour — take me straight in (your ✓ guide will be waiting)
+      </button>
+    </div>
+  </div>;
+}
+
+/* ============================================================ APP ============================================================ */
+function App(){
+  // one-time boot decision: ?reset wipes; a completed run shows the returning screen
+  const [screen,setScreen]=useState(()=>{
+    try{
+      if(QS.get('reset')==='1'){ Guide.reset(); return 'hero'; }
+      if(Guide.state().completedAt) return 'done';
+    }catch(e){}
+    return 'hero';
+  });
+  const [hist,setHist]=useState([]);
+  const s0=Guide.state();
+  const [name,setName]=useState(s0.name||'');
+  const [gym,setGym]=useState(s0.gymName||'');
+  const [phone,setPhone]=useState('');
+
+  const nav=next=>{ setHist(h=>[...h,screen]); setScreen(next); try{Guide.track('nav',{to:next});}catch(e){} window.scrollTo&&window.scrollTo(0,0); };
+  const back=()=>{ setHist(h=>{ if(!h.length){ setScreen('hero'); return h; } setScreen(h[h.length-1]); return h.slice(0,-1); }); window.scrollTo&&window.scrollTo(0,0); };
+
+  const nameV=(name.trim()||DEFAULT_NAME);
+  const gymV=(gym.trim()||DEFAULT_GYM);
+
+  const doSkip=()=>{
+    // make the promise honest: a skipper still gets a real (default) ✓ guide as the pill,
+    // never a stranded/inactive guide. Only seed defaults if they haven't signed up already.
+    if(!Guide.state().signedUp){ Guide.save({signedUp:true, name:'', gymName:''}); }
+    Guide.skip();
+    go('assistant-home.html');
+  };
+
+  const completeSignup=()=>{
+    // clear any prior skip — signing up re-activates the guide (story isn't guaranteed to follow)
+    Guide.save({name:name.trim(), gymName:gym.trim(), signedUp:true, startedAt:Date.now(), skipped:false});
+    nav('concierge');
+  };
+
+  const finishStory=()=>{
+    // persist personalization + story, then consolidate the old onboarding guards and route in.
+    // skipped:false so a skip→signup→story sequence leaves the guide ACTIVE (not stranded).
+    Guide.save({name:name.trim()||DEFAULT_NAME, gymName:gym.trim()||DEFAULT_GYM, signedUp:true, story:true, skipped:false});
+    try{ localStorage.setItem('cp_onb_owner','done'); }catch(e){}
+    try{ localStorage.setItem('ah_intro_dashboard','1'); }catch(e){}
+    Guide.track('nav',{to:'assistant-day0'});
+    go('assistant-home.html?day0=1');
+  };
+
+  const resetDemo=()=>{
+    let ok=true;
+    try{ ok=window.confirm(IS_LIVE
+      ? 'Start over? This clears your name, your academy name and your progress on this device, and takes you back to the beginning.'
+      : 'Reset the demo? This clears your progress and personalization so you can start the pitch fresh.'); }catch(e){ ok=true; }
+    if(ok){ Guide.reset(); try{ location.reload(); }catch(e){ setName('');setGym('');setPhone('');setHist([]);setScreen('hero'); } }
+  };
+
+  let body;
+  if(screen==='done') body=<AllSet name={s0.name||DEFAULT_NAME} onReset={resetDemo}/>;
+  else if(screen==='hero') body=<Hero onStart={()=>nav('signup')}/>;
+  else if(screen==='signup') body=<Signup name={name} setName={setName} gym={gym} setGym={setGym} phone={phone} setPhone={setPhone} onDone={completeSignup} onBack={back}/>;
+  else if(screen==='concierge') body=<Concierge gymV={gymV} onNext={()=>nav('ways')} onBack={back}/>;
+  else if(screen==='ways') body=<WaysChapter onNext={()=>nav('quests')} onBack={back}/>;
+  else if(screen==='quests') body=<QuestsChapter onFinish={finishStory} onBack={back}/>;
+
+  return <div className="min-h-screen w-full">
+    {body}
+    {screen!=='done' && <SkipFooter onSkip={doSkip}/>}
+  </div>;
+}
+
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(err){return {err};}
+  componentDidCatch(err){if(window.__showFatal)window.__showFatal('The app crashed',(err&&err.stack)||String(err));}
+  render(){return this.state.err?null:this.props.children;}
+}
+try{ ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>); }
+catch(e){ if(window.__showFatal) window.__showFatal('Failed to start',(e&&e.stack)||String(e)); else throw e; }
+</script>
+</body>
+</html>

@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="member-app.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='staging'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the chat composer) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Cia Paulista — Member App</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<!-- env.js must load FIRST: every later script (data.js, this app) reads CP.env to tell
+     live from staging from a local/jsdom dev run. -->
+<script src="env.js"></script>
+<script src="vendor/tailwind.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#E9E9EE', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', teal:'#38BDF8', ink:'#0B0B0D'
+  }}}}
+</script>
+<style>
+  html,body{margin:0;padding:0}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* The app IS the page — every visitor, every device. Full viewport, no bezel,
+     no notch, no prototype chrome. ≥640px: a clean centered app column, not a fake phone. */
+  .phone{position:relative;width:100%;height:100vh;background:#0B0B0D;overflow:hidden;margin:0 auto}
+  @supports (height:100dvh){ .phone{height:100dvh} }
+  @media (min-width:640px){ .phone{max-width:430px;border-left:1px solid rgba(255,255,255,.06);border-right:1px solid rgba(255,255,255,.06)} }
+  /* Top spacer: keeps every screen's content below the real status bar (PWA standalone / notch). */
+  .sbar{height:calc(8px + env(safe-area-inset-top,0px));flex:0 0 auto}
+  /* Small DEMO chip — mounted only in demo mode so the real app is never mistaken for it. */
+  .demochip{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:60;font-size:9px;font-weight:800;letter-spacing:.09em;color:#E8B53A;background:rgba(232,181,58,.12);border:1px solid rgba(232,181,58,.4);border-radius:999px;padding:2px 8px;pointer-events:none}
+  .scr{position:absolute;inset:0;display:flex;flex-direction:column}
+  .body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .body::-webkit-scrollbar{display:none}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:#9A9AA2;padding:7px 0;cursor:pointer}
+  .tab.on{color:#E11D2A;font-weight:700}
+  .tab .ic{font-size:18px;line-height:1}
+  .fade{animation:fade .2s ease-out}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(100%)}to{transform:none}}
+  .pressable{cursor:pointer;transition:transform .06s} .pressable:active{transform:scale(.97)}
+  .toggle{width:42px;height:24px;border-radius:999px;position:relative;flex:0 0 auto;transition:background .15s}
+  .toggle i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:999px;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .toggle.on{background:#34D27B}.toggle.on i{left:20px}.toggle.off{background:#3A3A40}
+  .chk{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;border:2px solid rgba(255,255,255,.20);color:transparent;font-weight:900;font-size:13px}.chk.on{background:#34D27B;border-color:#34D27B;color:#0B0B0D}
+  .spin{width:34px;height:34px;border-radius:999px;border:3px solid rgba(255,255,255,.14);border-top-color:#E11D2A;animation:spn .8s linear infinite;margin-left:auto;margin-right:auto}
+  @keyframes spn{to{transform:rotate(360deg)}}
+  .shimmer{position:relative;overflow:hidden;background:#1C1C20;border-radius:8px}
+  .shimmer::after{content:'';position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);animation:shim 1.1s infinite}
+  @keyframes shim{100%{transform:translateX(100%)}}
+  /* ===== Tatame — dark performance theme (red / black / white / gray) ===== */
+  .tatame{background:#0B0B0D;color:#F3F3F5}
+  .tatame .bg-white{background:#151517}            /* cards / dialogs / drawers / documents / tab bar */
+  .tatame .text-navy{color:#F3F3F5}                /* headings & values -> light */
+  .tatame .bg-navy{background:#2A2A2F}             /* neutral surfaces: avatars, hero & info cards */
+  .tatame button.bg-navy{background:#E11D2A}       /* primary actions & active selections -> signal red */
+  .tatame input,.tatame select,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+</style>
+</head>
+<body class="bg-gradient-to-br from-[#0B0B0D] to-[#151517] min-h-screen text-slate">
+<div class="phone tatame"><div id="app" class="scr"></div></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="data.js"></script>
+<script src="onboarding.js"></script>
+<script>
+// &quot; matters: esc() output is also reflected into value="…" attributes (the
+// sign-in gate input) — an unescaped " would break out of the attribute.
+const esc=s=>(''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ---------- data ----------
+const PROFILES=[
+  {id:'carlos', name:'Carlos Mendez', first:'Carlos', kind:'adult', program:'Adults', belt:'White', bcolor:'#ECEEF1', str:3, plan:'Adult Unlimited', price:165, req:40, since:'Sep 2024',
+   timeline:[['🥋','Promoted to White · 3 stripes','Nov 2025'],['⭐','100th class','Aug 2025'],['🟢','Joined the gym','Sep 2024']]},
+  {id:'liam', name:'Liam Park', first:'Liam', kind:'kid', program:'Kids', belt:'Gray', bcolor:'#9CA3AF', str:1, plan:'Kids Unlimited', price:130, req:30, since:'Jan 2025',
+   timeline:[['🏆','Competed — Kids Open (Gold)','Jan 2026'],['🥋','Promoted to Gray · 1 stripe','Feb 2026'],['🟢','Joined the gym','Jan 2025']]},
+  {id:'sofia', name:'Sofia Park', first:'Sofia', kind:'kid', program:'Kids', belt:'Yellow', bcolor:'#E8B53A', str:2, plan:'Kids Unlimited', price:130, req:30, since:'Mar 2025',
+   timeline:[['🥋','Promoted to Yellow · 2 stripes','Apr 2026'],['🟢','Joined the gym','Mar 2025']]},
+];
+const ATT={carlos:38, liam:24, sofia:18};
+function att30(seed){ let a=[]; for(let i=0;i<30;i++){ a.push((i*7+seed)%5===0?0:((i*3+seed)%3===0?2:1)); } return a; }
+const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat']; const TODAY=3;
+let _c=0; const cid=()=>'c'+(_c++);
+const CLASSES=[
+  {id:cid(),d:0,t:'6:00a',name:'No-Gi',program:'Adults',coach:'Prof. Diego',cap:24,spots:9},
+  {id:cid(),d:0,t:'6:30p',name:'Gi — All Levels',program:'Adults',coach:'Prof. Marcelo',cap:30,spots:6},
+  {id:cid(),d:1,t:'12:00p',name:'Gi Fundamentals',program:'Adults',coach:'Prof. Sarah',cap:20,spots:11},
+  {id:cid(),d:1,t:'6:30p',name:'No-Gi',program:'Adults',coach:'Prof. Diego',cap:24,spots:0},
+  {id:cid(),d:3,t:'12:00p',name:'Gi Fundamentals',program:'Adults',coach:'Prof. Sarah',cap:20,spots:8},
+  {id:cid(),d:3,t:'6:30p',name:'Gi — All Levels',program:'Adults',coach:'Prof. Marcelo',cap:30,spots:4,next:true},
+  {id:cid(),d:4,t:'6:00a',name:'No-Gi',program:'Adults',coach:'Prof. Diego',cap:24,spots:14},
+  {id:cid(),d:5,t:'10:00a',name:'Open Mat',program:'Adults',coach:'—',cap:40,spots:30},
+  {id:cid(),d:0,t:'4:30p',name:'Kids · Little Tigers',program:'Kids',coach:'Prof. Sarah',cap:16,spots:5},
+  {id:cid(),d:1,t:'4:30p',name:'Kids · Juniors',program:'Kids',coach:'Prof. Sarah',cap:16,spots:7},
+  {id:cid(),d:3,t:'4:30p',name:'Kids · Little Tigers',program:'Kids',coach:'Prof. Sarah',cap:16,spots:4,next:true},
+  {id:cid(),d:5,t:'9:00a',name:'Kids · Open Mat',program:'Kids',coach:'Prof. Sarah',cap:20,spots:12},
+];
+const ANNOUNCE=[
+  {id:'a1',ic:'📣',title:'Holiday hours this week',from:'Cia Paulista',time:'2h ago',body:'We’ll have a modified schedule Thursday–Friday for the holiday. Open Mat Saturday is on as usual. See the schedule for details.'},
+  {id:'a2',ic:'🥋',title:'You’re close to your next stripe!',from:'Prof. Marcelo',time:'1d ago',body:'Carlos — you’re at 38 of 40 classes toward your next stripe. Two more and we’ll get you on the wall. Keep it up!'},
+  {id:'a3',ic:'💳',title:'Card on file expires soon',from:'Billing',time:'3d ago',body:'The card ending 4242 expires next month. Update it under More → Billing to avoid any interruption.'},
+];
+const WAIVERS=[
+  {key:'liability', title:'Liability Waiver & Release', who:'Carlos Mendez', date:'Sep 12, 2024'},
+  {key:'media', title:'Media / Photo Consent', who:'Carlos Mendez', date:'Sep 12, 2024'},
+  {key:'kids', title:'Minor Participation Waiver — Liam Park', who:'Carlos Mendez (guardian)', date:'Jan 8, 2025'},
+];
+
+// ---------- teaching (instructor) mode — folded into the SAME app, role-gated by staff role ----------
+// The account holder (Carlos) is also a coach, so his profile switcher exposes a Teaching mode.
+// Staff/owner money concerns (Stripe, payouts, managing member billing) live in the Staff Console,
+// NOT here — so teaching mode deliberately omits personal-membership billing.
+const TBELT={White:'#ECEEF1','Gray-white':'#C3C9D0',Gray:'#9CA3AF','Gray-black':'#5B6470',Yellow:'#E8B53A',Orange:'#EA7317',Green:'#2E9E5B',Blue:'#4F76C9',Purple:'#8160C9',Brown:'#8A5A33',Black:'#2E323C'};
+// IBJJF rule (matches Owner Console): kids ladder = under-16 only, tops out at Green; adults go White → Blue.
+const TORDER={Adults:['White','Blue','Purple','Brown','Black'],Kids:['White','Gray-white','Gray','Gray-black','Yellow','Orange','Green']};
+const TSTUDENTS=[
+  {id:'mia',n:'Mia Tanaka',prog:'Adults',belt:'White',str:2,cur:29,req:40},
+  {id:'bruno',n:'Bruno Alves',prog:'Adults',belt:'Purple',str:2,cur:74,req:80},
+  {id:'diego',n:'Diego Costa',prog:'Adults',belt:'Blue',str:0,cur:21,req:60},
+  {id:'aisha',n:'Aisha Khan',prog:'Adults',belt:'White',str:1,cur:30,req:40},
+  {id:'marcus',n:'Marcus Silva',prog:'Adults',belt:'Purple',str:1,cur:55,req:80},
+  {id:'sarahL',n:'Sarah Lin',prog:'Adults',belt:'Blue',str:2,cur:52,req:60},
+  {id:'tliam',n:'Liam Park',prog:'Kids',belt:'Gray',str:1,cur:28,req:30},
+  {id:'tsofia',n:'Sofia Reyes',prog:'Kids',belt:'Yellow',str:2,cur:18,req:30},
+  {id:'tleanne',n:'Leanne Park',prog:'Kids',belt:'White',str:0,cur:8,req:30},
+  {id:'kai',n:'Kai Nguyen',prog:'Kids',belt:'Gray',str:0,cur:24,req:30},
+];
+const TCLASSES=[
+  {id:'tgi',time:'6:30 PM',name:'Gi — All Levels',prog:'Adults',roster:['mia','bruno','diego','aisha','marcus','sarahL']},
+  {id:'tkids',time:'4:30 PM',name:'Kids · Little Tigers',prog:'Kids',roster:['tliam','tsofia','tleanne','kai']},
+];
+const tStud=id=> (S.tstudents||TSTUDENTS).find(x=>x.id===id);
+const tPresent=(c,id)=> !!(S.tatt&&S.tatt[c]&&S.tatt[c][id]);
+const tPresentCount=c=> Object.values((S.tatt&&S.tatt[c])||{}).filter(Boolean).length;
+const tReady=s=> s.cur/s.req>=0.9;
+function tNext(s){ if(s.str<4) return {belt:s.belt,str:s.str+1}; const o=TORDER[s.prog]; const i=o.indexOf(s.belt); return {belt:o[Math.min(i+1,o.length-1)],str:0}; }
+function tRank(b,st){ return st>0? b+' · '+st+' stripe'+(st>1?'s':'') : b+' belt'; }
+function tDue(){ return (S.tstudents||TSTUDENTS).filter(tReady); }
+
+// ---------- cloud seam (CP.data — fail-soft; the app runs identically without it) ----------
+function hasCloud(){ return !!(window.CP&&window.CP.data&&window.CP.data.member); }
+// A device is "bound" when a claim link (?m=<token>) validated against the cloud.
+// The canonical member record then becomes a first-class profile in this app.
+// Cloud-derived text is sanitized at the SOURCE (strips tag characters) so every
+// downstream template-string sink inherits safety; esc() stays for full escaping.
+function deTag(s){ return String(s==null?'':s).replace(/[<>]/g,''); }
+function boundProfile(){
+  if(!hasCloud()) return null;
+  let m=null; try{ m=CP.data.member.current(); }catch(e){}
+  if(!m) return null;
+  const kind=m.program==='Kids'?'kid':'adult';
+  let since='—'; try{ if(m.joined_at) since=new Date(m.joined_at).toLocaleString('en-US',{month:'short',year:'numeric'}); }catch(e){}
+  const safeName=deTag(m.name||'Member'), safeBelt=deTag(m.belt||'White');
+  return { id:'__bound__', bound:true, cloudId:m.id, name:safeName,
+    first:safeName.split(' ')[0], kind:kind, program:m.program==='Kids'?'Kids':'Adults',
+    belt:safeBelt, bcolor:TBELT[safeBelt]||'#ECEEF1', str:+m.stripes||0,
+    plan:deTag(m.plan)||(kind==='kid'?'Kids Unlimited':'Adult Unlimited'), price:kind==='kid'?130:165,
+    req:kind==='kid'?30:40, since:since,
+    timeline:[['🟢','Joined the gym',since]] };
+}
+function famList(){ const b=boundProfile(); return b?[b].concat(PROFILES):PROFILES; }
+// Tiny ☁ hint next to the bound member's name — synced / offline. Never a panel.
+function cloudDot(p){ if(!p||!p.bound) return '';
+  let on=null; try{ if(hasCloud()) on=CP.data.status().online; }catch(e){}
+  const cls=on===true?'text-good/80':on===false?'text-slate/50':'text-slate/40';
+  // Dot only — no " offline" text (alarming next to a name). Offline reassurance
+  // lives contextually on the QR ("works offline") and the Progress offline note.
+  const tip=on===true?'Synced with the gym':on===false?'Offline — your card still works':'Member card linked';
+  return ` <span id="clouddot" class="text-[9px] font-normal ${cls}" title="${tip}">☁</span>`;
+}
+// Live attendance for the bound member (progress screen). Cached ~30s; fail-soft
+// to the LAST SYNCED payload (cp_member_att) — never to the demo's fake bars.
+let ATT_LIVE={state:'idle',data:null,at:0,seq:0};
+function attCache(){ try{ const c=JSON.parse(localStorage.getItem('cp_member_att')); if(c&&c.data) return c; }catch(e){} return null; }
+function relTime(ts){ const m=Math.floor(Math.max(0,Date.now()-ts)/60000);
+  if(m<1) return 'just now'; if(m<60) return m+'m ago';
+  const h=Math.floor(m/60); if(h<24) return h+'h ago'; return Math.floor(h/24)+'d ago'; }
+function fetchLiveAttendance(){
+  const seq=++ATT_LIVE.seq;
+  if(!hasCloud()){ ATT_LIVE={state:'fail',data:null,at:Date.now(),seq:seq}; return; }
+  ATT_LIVE.state='loading'; ATT_LIVE.at=Date.now();
+  const done=r=>{ if(seq!==ATT_LIVE.seq) return;
+    ATT_LIVE={state:r?'ok':'fail',data:r||null,at:Date.now(),seq:seq};
+    if(r){ try{ localStorage.setItem('cp_member_att',JSON.stringify({data:r,at:Date.now()})); }catch(e){} }
+    try{ const p=prof();
+      if(S.loggedIn&&S.mode==='member'&&!S.stack.length&&p.bound&&(S.tab==='progress'||S.tab==='home')
+        &&!document.getElementById('swov')&&!document.getElementById('cfov')) render();
+    }catch(e){} };
+  try{ CP.data.member.attendance().then(done,()=>done(null)); }
+  catch(e){ ATT_LIVE={state:'fail',data:null,at:Date.now(),seq:seq}; }
+}
+// ---------- claim-link binding moment (?m=<token>) ----------
+let LINK=null; // {phase:'linking'|'success'|'fail', member, token}
+let LINK_SEQ=0;
+function cleanTokenUrl(){ try{ const u=new URL(location.href); if(u.searchParams.has('m')){ u.searchParams.delete('m'); history.replaceState(null,'',u.pathname+(u.searchParams.toString()?'?'+u.searchParams.toString():'')+u.hash); } }catch(e){} }
+function startBind(tok){
+  // Re-opening a link this phone ALREADY claimed: no round-trip. The phone works,
+  // so a slow/hung/offline RPC must never gate it behind "No connection" or
+  // "didn't work" — the success screen reads naturally as confirmation.
+  if(hasCloud()){ let t=null,cur=null; try{ t=CP.data.member.token(); cur=CP.data.member.current(); }catch(e){}
+    if(t===tok&&cur){ LINK_SEQ++; cleanTokenUrl(); LINK={phase:'success',member:cur,token:tok}; render(); return; } }
+  const seq=++LINK_SEQ;
+  LINK={phase:'linking',token:tok};
+  const minHold=new Promise(r=>setTimeout(r,700)); // let the moment breathe — no sub-100ms flash
+  // Watchdog: a hung RPC (captive portal, dead radio) must not spin forever —
+  // after 10s land on the offline-fail copy ("your link is still good — try again").
+  let timedOut=false;
+  const watchdog=new Promise(r=>setTimeout(()=>{ timedOut=true; r(null); },10000));
+  const attempt=hasCloud()?Promise.race([CP.data.member.bind(tok),watchdog]):Promise.resolve(null);
+  attempt.then(m=>minHold.then(()=>m),()=>minHold.then(()=>null)).then(m=>{
+    if(seq!==LINK_SEQ||!LINK) return; // superseded by a retry or dismissed
+    if(m){ cleanTokenUrl(); LINK={phase:'success',member:m,token:tok}; }
+    else LINK={phase:'fail',token:tok,off:timedOut||undefined};
+    render();
+  });
+  render();
+}
+function scrLink(){
+  if(LINK.phase==='linking') return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl mx-auto">CP</div>
+    <div class="spin mt-10"></div>
+    <div class="mt-5 font-bold text-navy text-lg">Linking this phone…</div>
+    <div class="text-[13px] text-slate mt-1">Setting up your member card</div></div>`;
+  if(LINK.phase==='success'){ const m=LINK.member;
+    return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-20 h-20 rounded-full bg-good text-white grid place-items-center text-4xl mx-auto">✓</div>
+    <div class="mt-5 font-bold text-navy text-lg leading-snug">This phone is now<br>${esc(m.name)}’s member card</div>
+    <div class="text-[13px] text-slate mt-2">Your check-in code and progress are ready.</div>
+    <button data-act="linkdone" class="pressable w-full mt-8 bg-navy text-white rounded-xl py-3 text-sm font-bold">Continue</button></div>`; }
+  // No data layer at all counts as "offline" — a good claim link must never be
+  // reported as a dead link just because scripts failed to load. A watchdog
+  // timeout (LINK.off) is a stall, not a bad token — same offline copy.
+  const _off=(()=>{try{return LINK.off===true||!hasCloud()||CP.data.member.lastError==='offline';}catch(e){return true;}})();
+  // On a configured (real) device, "Continue" lands on the locked sign-in gate —
+  // so no "keep using the app" promise, and the button says where it really goes
+  // (the gate, prefilled with this token so retrying is one tap). Demo keeps the
+  // original copy: continuing there really does open the app.
+  const _demo=demoMode();
+  return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-16 h-16 rounded-full bg-mist grid place-items-center text-3xl mx-auto">${_off?'📶':'🔗'}</div>
+    <div class="mt-5 font-bold text-navy text-lg">${_off?'No connection right now':'That link didn’t work'}</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">${_off?'Your link is still good — check the internet and tap Try again.':'Ask the gym to send a fresh one.'}${_demo?'<br>You can keep using the app in the meantime.':''}</div>
+    ${LINK.token?`<button data-act="linkretry" class="pressable w-full mt-8 border border-slate/25 rounded-xl py-3 text-sm font-semibold">Try again</button>`:''}
+    <button data-act="linkskip" class="pressable w-full mt-3 bg-navy text-white rounded-xl py-3 text-sm font-bold">${_demo?'Continue to the app':'Enter the code instead'}</button></div>`;
+}
+
+// ---------- invite acceptance (?invite=<token>) ----------
+// Frozen Wave-3 contract (docs/superpowers/specs/2026-07-22-auth-system-design.md): accept()
+// creates the real account + links members.user_id server-side, but "never mints a session
+// itself" — so success here is NOT signed in yet. The next screen hands off into the same
+// email OTP machinery as the sign-in gate (scrEmailSignin below), prefilled with the email
+// the function confirmed. Failure (expired/revoked/bad token) is calm and permanent — no
+// retry, since retrying the same bad token can't help; a connectivity failure (no server
+// error string, just a reason) DOES offer Try again, same distinction scrLink already makes.
+let INVITE=null; // {phase:'accepting'|'success'|'fail', token, email, error, reason}
+let INVITE_SEQ=0;
+function hasInvitesApi(){ try{ return !!(window.CP&&CP.data&&CP.data.invites&&CP.data.invites.accept); }catch(e){ return false; } }
+function cleanInviteUrl(){ try{ const u=new URL(location.href); if(u.searchParams.has('invite')){ u.searchParams.delete('invite'); history.replaceState(null,'',u.pathname+(u.searchParams.toString()?'?'+u.searchParams.toString():'')+u.hash); } }catch(e){} }
+function startInviteAccept(tok){
+  const seq=++INVITE_SEQ;
+  INVITE={phase:'accepting',token:tok,email:null,error:null,reason:null};
+  render();
+  const minHold=new Promise(r=>setTimeout(r,700)); // let the moment breathe — no sub-100ms flash
+  let timedOut=false;
+  const watchdog=new Promise(r=>setTimeout(()=>{ timedOut=true; r({ok:false,reason:'offline'}); },10000));
+  const attempt=hasInvitesApi()?Promise.race([CP.data.invites.accept(tok),watchdog]):Promise.resolve({ok:false,reason:'unconfigured'});
+  attempt.then(r=>minHold.then(()=>r),()=>minHold.then(()=>({ok:false,reason:'offline'}))).then(r=>{
+    if(seq!==INVITE_SEQ) return; // superseded by a retry
+    if(r&&r.ok){ cleanInviteUrl(); INVITE={phase:'success',token:tok,email:r.email||null,error:null,reason:null}; }
+    else { INVITE={phase:'fail',token:tok,email:null,error:(r&&r.error)||null,reason:(r&&r.reason)||(timedOut?'offline':null)}; }
+    render();
+  });
+}
+function scrInvite(){
+  if(INVITE.phase==='accepting') return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl mx-auto">CP</div>
+    <div class="spin mt-10"></div>
+    <div class="mt-5 font-bold text-navy text-lg">Setting up your account…</div>
+    <div class="text-[13px] text-slate mt-1">Just a moment</div></div>`;
+  if(INVITE.phase==='success') return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-20 h-20 rounded-full bg-good text-white grid place-items-center text-4xl mx-auto">✓</div>
+    <div class="mt-5 font-bold text-navy text-lg leading-snug">Your account is ready</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">Sign in with your email to finish setting up your member card.</div>
+    <button data-act="invitecontinue" class="pressable w-full mt-8 bg-navy text-white rounded-xl py-3 text-sm font-bold">Sign in with email</button>
+  </div>`;
+  // fail — a server error string means the token itself is the problem (expired/revoked/bad);
+  // no error string (just a reason) means this device couldn't reach the server at all.
+  const netty=!INVITE.error;
+  return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-16 h-16 rounded-full bg-mist grid place-items-center text-3xl mx-auto">${netty?'📶':'🔗'}</div>
+    <div class="mt-5 font-bold text-navy text-lg">${netty?'No connection right now':'That invite didn’t work'}</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">${netty?'Check the internet and tap Try again.':esc(INVITE.error)}</div>
+    ${netty?'':`<div class="text-[13px] text-slate mt-2 leading-relaxed">Ask the front desk to send you a fresh invite.</div>`}
+    ${netty?`<button data-act="inviteretry" class="pressable w-full mt-8 border border-slate/25 rounded-xl py-3 text-sm font-semibold">Try again</button>`:''}
+    <button data-act="inviteskip" class="pressable w-full mt-3 bg-navy text-white rounded-xl py-3 text-sm font-bold">Sign in another way</button>
+  </div>`;
+}
+
+// ---------- email sign-in (ESI) — invite acceptance hands off here, and it's also offered
+// directly from the unbound sign-in gate for anyone who already has an account and is just
+// setting up a new device. Same sendOtpCode/verifyOtpCode machinery the staff sign-in gate
+// uses (prototypes/auth-gate.js), same honest link-mode/code-mode fork via otpCodesEnabled(). ----
+let ESI={active:false, step:'email', email:'', code:'', busy:false, err:null};
+function resetEsi(){ ESI={active:false, step:'email', email:'', code:'', busy:false, err:null}; }
+function codeModeOn(){ try{ return !!CP.data.auth.otpCodesEnabled(); }catch(e){ return false; } }
+// Best-effort: a signed-in member's own row, matched by user_id. This may 404/deny before
+// the backing RLS policy for it ships — that's a calm "not linked yet" state below, never a
+// fake bind. On a hit, write the SAME local cache key the legacy token bind uses (cp_member_rec)
+// so boundProfile()/CP.data.member.current() recognize it with no other code path touched.
+function resolveAccountMember(uid){
+  try{
+    if(!hasCloud()||!uid) return Promise.resolve(null);
+    let cl=null; try{ cl=CP.data.client(); }catch(e){}
+    if(!cl) return Promise.resolve(null);
+    return cl.from('members').select('*').eq('user_id',uid).maybeSingle().then(function(r){
+      if(r&&r.data){ try{ localStorage.setItem('cp_member_rec',JSON.stringify(r.data)); }catch(e){} return r.data; }
+      return null;
+    }).catch(function(){ return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
+function onAccountSignedIn(){
+  try{ localStorage.setItem('cp_session_meta', JSON.stringify({started:Date.now(), lastActive:Date.now()})); }catch(e){}
+  let uid=null; try{ const u=CP.data.auth.user(); uid=u&&u.id; }catch(e){}
+  const land=()=>{
+    if(boundProfile()){
+      resetEsi();
+      S.loggedIn=true; S.mode='member'; S.active='__bound__'; S.tab='home'; S.stack=[]; save();
+      render(); toast('Welcome, <b>'+esc(prof().first)+'</b> 🥋');
+    } else { ESI.step='nomatch'; ESI.busy=false; render(); }
+  };
+  if(uid) resolveAccountMember(uid).then(land,land); else land();
+}
+function doEsiSend(isResend){
+  if(ESI.busy) return;
+  if(!isResend){ const inp=document.getElementById('esiemail'); if(inp) ESI.email=inp.value; }
+  const email=(ESI.email||'').trim();
+  if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ ESI.err='Enter a valid email address.'; render(); return; }
+  ESI.busy=true; ESI.err=null; render(); // working state shows synchronously (<100ms)
+  const hasAuth=()=>{ try{ return !!(window.CP&&CP.data&&CP.data.auth&&CP.data.auth.sendOtpCode); }catch(e){ return false; } };
+  const p=hasAuth()?CP.data.auth.sendOtpCode(email):Promise.resolve({ok:false,reason:'unconfigured'});
+  const minHold=new Promise(r=>setTimeout(r,350));
+  Promise.resolve(p).then(r=>minHold.then(()=>r),()=>minHold.then(()=>({ok:false,reason:'offline'}))).then(r=>{
+    ESI.busy=false;
+    if(r&&r.ok){ ESI.email=email; ESI.err=null; ESI.code=''; ESI.step=codeModeOn()?'code':'sentlink'; render(); return; }
+    ESI.err=(r&&r.error)||(r&&r.reason==='unconfigured'?'Email sign-in isn’t set up on this device yet.':'Can’t reach the gym’s system right now. Check your internet connection and try again.');
+    render();
+  });
+}
+function doEsiVerify(){
+  if(ESI.busy) return;
+  const inp=document.getElementById('esicode'); if(inp) ESI.code=inp.value;
+  const code=(ESI.code||'').replace(/\D/g,'');
+  if(code.length<6){ ESI.err='Enter the 6-digit code from your email.'; render(); return; }
+  ESI.busy=true; ESI.err=null; render();
+  const hasAuth=()=>{ try{ return !!(window.CP&&CP.data&&CP.data.auth&&CP.data.auth.verifyOtpCode); }catch(e){ return false; } };
+  const p=hasAuth()?CP.data.auth.verifyOtpCode(ESI.email,code):Promise.resolve({ok:false,reason:'unconfigured'});
+  const minHold=new Promise(r=>setTimeout(r,350));
+  Promise.resolve(p).then(r=>minHold.then(()=>r),()=>minHold.then(()=>({ok:false,reason:'offline'}))).then(r=>{
+    ESI.busy=false;
+    if(r&&r.ok){ onAccountSignedIn(); return; }
+    ESI.err=(r&&r.error)||'That code didn’t work — check it and try again, or resend.';
+    render();
+  });
+}
+function scrEmailSignin(){
+  if(ESI.step==='nomatch') return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-16 h-16 rounded-full bg-mist grid place-items-center text-3xl mx-auto">🥋</div>
+    <div class="mt-5 font-bold text-navy text-lg">Signed in — almost there</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">We signed you in, but this account isn’t linked to a member profile yet. Ask the front desk to check your invite.</div>
+    <button data-act="esisignout" class="pressable w-full mt-8 border border-slate/25 rounded-xl py-3 text-sm font-semibold">Sign out</button>
+  </div>`;
+  if(ESI.step==='sentlink') return `${statusbar()}<div class="body px-6 pt-14 text-center fade">
+    <div class="w-16 h-16 rounded-full bg-mist grid place-items-center text-3xl mx-auto">✉️</div>
+    <div class="mt-5 font-bold text-navy text-lg">Check your email</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">We sent a sign-in link to <b class="text-navy">${esc(ESI.email)}</b>. Open it on this device to continue.</div>
+    ${ESI.err?`<div class="mt-3 text-[12px] text-[#FF7B85] leading-relaxed">${esc(ESI.err)}</div>`:''}
+    <button data-act="esiresend" class="pressable w-full mt-6 border border-slate/25 rounded-xl py-3 text-sm font-semibold" ${ESI.busy?'disabled':''}>${ESI.busy?'Sending…':'Resend the email'}</button>
+    <button data-act="esiback" class="pressable text-[12px] text-slate mt-4">‹ Use a different email</button>
+  </div>`;
+  if(ESI.step==='code') return `${statusbar()}<div class="body px-6 pt-12 text-center fade">
+    <div class="text-3xl">🔢</div><div class="mt-3 font-bold text-navy text-lg">Enter the code</div>
+    <div class="text-[13px] text-slate mt-1">We emailed a 6-digit code to <b class="text-navy">${esc(ESI.email)}</b></div>
+    <input id="esicode" class="w-full mt-5 rounded-xl border border-slate/30 px-4 py-3 text-[16px] text-center tracking-[.35em]" placeholder="••••••" value="${esc(ESI.code)}" inputmode="numeric" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" ${ESI.busy?'disabled':''}/>
+    ${ESI.err?`<div class="mt-2 text-[12px] text-[#FF7B85] leading-relaxed">${esc(ESI.err)}</div>`:''}
+    <button data-act="esiverify" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold" ${ESI.busy?'disabled':''}>${ESI.busy?'Verifying…':'Verify & continue'}</button>
+    <button data-act="esiresend" class="pressable text-[12px] text-slate mt-4" ${ESI.busy?'disabled':''}>Resend code</button>
+    <button data-act="esiback" class="pressable text-[12px] text-slate mt-2">‹ Use a different email</button>
+  </div>`;
+  // default: 'email'
+  const codeMode=codeModeOn();
+  return `${statusbar()}<div class="body px-6 pt-12 text-center fade">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl mx-auto">CP</div>
+    <div class="mt-4 font-bold text-navy text-lg">Sign in with your email</div>
+    <div class="text-[13px] text-slate mt-1.5 leading-relaxed">For members who already have an account. We’ll email you ${codeMode?'a code':'a sign-in link'} — never a password.</div>
+    <label class="block mt-6 text-left"><span class="text-[12px] text-slate font-semibold">Email</span>
+      <input id="esiemail" class="w-full mt-1.5 rounded-xl border border-slate/30 px-4 py-3 text-[16px]" placeholder="name@email.com" value="${esc(ESI.email)}" type="email" ${ESI.busy?'disabled':''} autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go"/></label>
+    ${ESI.err?`<div class="mt-2 text-[12px] text-[#FF7B85] leading-relaxed text-left">${esc(ESI.err)}</div>`:''}
+    <button data-act="esisend" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold" ${ESI.busy?'disabled':''}>${ESI.busy?'Sending…':(codeMode?'Send code':'Email me a link')}</button>
+    <button data-act="esiback" class="pressable text-[12px] text-slate mt-4">‹ Back</button>
+  </div>`;
+}
+
+// ---------- real-app vs demo mode ----------
+// Demo (fake profiles, simulate scan, reset) survives ONLY behind ?demo=1 or when
+// the cloud isn't configured (local file / jsdom test runs). Everywhere else this
+// is the real app: bound device -> straight in (even offline), unbound -> sign-in gate.
+const DEMO_PARAM=(()=>{ try{ return new URLSearchParams(location.search).has('demo'); }catch(e){ return false; } })();
+function cloudConfigured(){ try{ return !!(window.CP&&CP.data&&CP.data.configured()); }catch(e){ return false; } }
+function demoMode(){ return DEMO_PARAM||!cloudConfigured(); }
+// ---------- staging (preview) mode ----------
+// Staging is the owner's private preview build: env.js reports CP.env.isStaging and the
+// cloud is switched off, so there are no real member accounts and no invite links to
+// paste. The sign-in must therefore let him straight in — one trivial code or one tap on
+// "Use a demo member". LIVE (cloud configured) never takes this path: the real invite-code
+// gate is untouched there, and this code never appears in it.
+const STAGE_CODE='1111111';
+function stagingMode(){ try{ return !!(window.CP&&window.CP.env&&window.CP.env.isStaging)&&!cloudConfigured(); }catch(e){ return false; } }
+// Real bound mode: configured cloud + this phone linked to one real member.
+// The demo's fictions (fake booking, fake billing, fake family, seeded announcements)
+// must NOT masquerade as real here — each surface either shows the truth or a calm
+// honest "not yet" note. Demo mode (?demo=1 / unconfigured) keeps every fiction.
+function realBound(){ return !demoMode()&&!!boundProfile(); }
+// One reusable honest note — quiet card, no alarm color, plain words.
+function notYet(body){ return `<div class="rounded-xl bg-mist p-3 text-[12px] text-slate leading-relaxed">${body}</div>`; }
+// Announcements: the seeded demo items never show to a real member — real
+// announcements arrive with the messaging slice; until then, calm and empty.
+function annList(){ return realBound()?[]:ANNOUNCE; }
+function gateNeeded(){
+  if(demoMode()) return false;      // explicit demo, or no cloud on this device
+  if(boundProfile()) return false;  // bound device -> straight into the app (fail-soft cache)
+  try{ if(new URLSearchParams(location.search).has('m')) return false; }catch(e){} // claim link runs its own flow
+  return true;                      // configured + unbound -> member sign-in gate
+}
+// Accepts a pasted invite link (…?invite=<token>), a legacy claim link (…?m=<token>), an
+// "invite=<token>" / "m=<token>" fragment, or a bare token of either kind — then tells them
+// APART by shape, so a member who pastes their real Wave-3 invite link (exactly what the
+// kiosk's "copy this link and send it yourself" fallback hands the front desk to text/read
+// out) never gets routed into the legacy claim RPC and wrongly blamed for a "bad code".
+// Wave-3 invite tokens: 32 random bytes, base64url-encoded, no padding — 43 chars, charset
+// A-Za-z0-9_- (supabase/functions/invite/index.ts genToken()). Legacy qr_tokens: a uuid with
+// the dashes stripped — exactly 32 lowercase hex chars (0001_core.sql). That length+charset
+// gap is what disambiguates a BARE paste with no query-param wrapper; a wrapped `invite=` or
+// `m=` param is unambiguous either way, so it's checked first.
+function stripPastePunct(t){ return t.replace(/[.,;:!?)\]}>"'»›’”…]+$/,''); }
+function classifyPaste(raw){
+  var s=String(raw==null?'':raw).trim();
+  if(!s) return {kind:null,token:''};
+  var mi=s.match(/[?&#]invite=([^&#\s]+)/)||s.match(/^invite=([^&#\s]+)$/);
+  if(mi){ var ti; try{ ti=decodeURIComponent(mi[1]); }catch(e){ ti=mi[1]; } return {kind:'invite',token:stripPastePunct(ti)}; }
+  var mm=s.match(/[?&#]m=([^&#\s]+)/)||s.match(/^m=([^&#\s]+)$/);
+  if(mm){ var tm; try{ tm=decodeURIComponent(mm[1]); }catch(e){ tm=mm[1]; } return {kind:'legacy',token:stripPastePunct(tm).toLowerCase()}; }
+  // Bare paste, no recognizable query wrapper — classify by shape.
+  var t=stripPastePunct(s.replace(/\s+/g,''));
+  if(/^[0-9a-f]{32}$/i.test(t)) return {kind:'legacy',token:t.toLowerCase()};
+  if(/^[A-Za-z0-9_-]{30,50}$/.test(t)) return {kind:'invite',token:t};
+  // Unrecognized shape — fall through to the legacy attempt (same failure copy as before
+  // this change; never a behavior regression for whatever this actually was).
+  return {kind:'legacy',token:t};
+}
+let GATE={busy:false,err:null,val:''};
+let GATE_SEQ=0;
+function scrGate(){
+  return `${statusbar()}<div class="body px-6 pt-10 fade">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl">CP</div>
+    <div class="mt-5 font-bold text-navy text-[22px] leading-tight">Welcome to Cia Paulista</div>
+    <div class="text-[13px] text-slate mt-2 leading-relaxed">Use the invite from your gym to link this phone — then your member card, schedule and progress are ready to go.</div>
+    <label class="block mt-6"><span class="text-[12px] text-slate font-semibold">Paste your invite link or code</span>
+      <!-- text-[16px]: anything smaller makes iOS Safari zoom the whole screen on focus.
+           autocapitalize/autocorrect off: tokens are lowercase hex, keyboards mangle them. -->
+      <input id="gatetok" class="w-full mt-1.5 rounded-xl border border-slate/30 px-4 py-3 text-[16px]" placeholder="https://… or your code" value="${esc(GATE.val)}" ${GATE.busy?'disabled':''} autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go"/></label>
+    <div class="text-[11px] text-slate/60 mt-1.5 leading-relaxed">Got an email or text with an invite link? Tapping the link works too.</div>
+    ${GATE.err?`<div id="gateerr" class="mt-2 text-[12px] text-[#FF7B85] leading-relaxed">${esc(GATE.err)}</div>`:''}
+    <button data-act="gatebind" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold">${GATE.busy?'Linking…':'Link this phone'}</button>
+    ${GATE.busy?'<div class="spin mt-6"></div>':''}
+    <div class="text-[11px] text-slate/50 my-4 text-center">or</div>
+    <button data-act="esistart" class="pressable w-full border border-slate/25 rounded-xl py-3 text-sm font-semibold" ${GATE.busy?'disabled':''}>Sign in with your email</button>
+    <div class="text-[11px] text-slate/70 mt-6 leading-relaxed text-center">Members get their invite link from the gym —<br>the front desk can resend it any time.<br>Already have an account on another device? Use email sign-in above.</div>
+  </div>`;
+}
+function doGateBind(){
+  if(GATE.busy) return;
+  const inp=document.getElementById('gatetok');
+  if(inp) GATE.val=inp.value;
+  const parsed=classifyPaste(GATE.val);
+  if(!parsed.token){ GATE.err='Paste the invite link or code from your gym first.'; render(); return; }
+  // A real Wave-3 invite link/token pasted here hands straight off to the SAME accept flow
+  // ?invite=<token> in the URL runs (startInviteAccept -> scrInvite) — its own accepting/
+  // success/fail states already cover this, including the honest expired/revoked/bad-token
+  // copy that must NOT be confused with the legacy "That code didn't match" message below.
+  if(parsed.kind==='invite'){ GATE.val=''; GATE.err=null; startInviteAccept(parsed.token); return; }
+  const tok=parsed.token;
+  GATE.busy=true; GATE.err=null; render(); // working state shows synchronously (<100ms)
+  const seq=++GATE_SEQ;
+  const minHold=new Promise(r=>setTimeout(r,450)); // no sub-100ms flash
+  let timedOut=false;
+  const watchdog=new Promise(r=>setTimeout(()=>{ timedOut=true; r(null); },12000)); // hung RPC ≠ forever spinner
+  const attempt=hasCloud()?Promise.race([CP.data.member.bind(tok),watchdog]):Promise.resolve(null);
+  attempt.then(m=>minHold.then(()=>m),()=>minHold.then(()=>null)).then(m=>{
+    if(seq!==GATE_SEQ) return;
+    GATE.busy=false;
+    if(m){ GATE.err=null; GATE.val='';
+      S.loggedIn=true; S.mode='member'; S.active='__bound__'; S.tab='home'; S.stack=[]; save();
+      render(); toast('Welcome, <b>'+esc(prof().first)+'</b> 🥋'); return; }
+    let err=null; try{ err=CP.data.member.lastError; }catch(e){}
+    if(timedOut) err='offline';
+    // 'bad-token' → wrong code; 'server' → the RPC answered with an error (their
+    // side, not the member's connection); 'offline' or anything unknown → the
+    // connection copy (backward-compatible default).
+    GATE.err = err==='bad-token'
+      ? 'That code didn’t match. Check the invite from your gym and try again.'
+      : err==='server'
+      ? 'Something went wrong on our side — ask the front desk to resend your invite.'
+      : 'Can’t reach the gym’s system right now. Check your internet connection and try again.';
+    render();
+  });
+}
+
+// ---------- PWA install (gentle affordances, never a nagging modal) ----------
+let BIP=null; // Chrome/Android deferred beforeinstallprompt event
+function isStandalone(){ try{ return (window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true; }catch(e){ return false; } }
+function canInstall(){ try{ return location.protocol==='https:'&&!isStandalone()&&localStorage.getItem('cp_install_done')!=='1'; }catch(e){ return false; } }
+function installHintHidden(){ try{ return localStorage.getItem('cp_install_hide')==='1'; }catch(e){ return true; } }
+
+// ---------- state ----------
+function fresh(){ return { loggedIn:false, loginStep:1, active:boundProfile()?'__bound__':'carlos', tab:'home', stack:[], booked:Object.fromEntries(CLASSES.filter(c=>c.next).map(c=>[c.id,'booked'])), read:{}, attended:Object.assign({},ATT), notif:{rem:true,wait:true,belt:true,bill:true,ann:true,quiet:false}, selDay:TODAY, mode:'member', texpand:null, tatt:{tgi:{mia:1,bruno:1},tkids:{tliam:1}}, tstudents:JSON.parse(JSON.stringify(TSTUDENTS)) }; }
+let S; function load(){ try{const s=localStorage.getItem('cp_memberapp_v3'); S=s?JSON.parse(s):fresh();}catch(e){S=fresh();} }
+function save(){ try{localStorage.setItem('cp_memberapp_v3',JSON.stringify(S));}catch(e){} }
+load();
+function prof(){ if(S.active==='__bound__'){ const b=boundProfile(); if(b) return b; }
+  return PROFILES.find(p=>p.id===S.active)||PROFILES[0]; }
+const classState=c=> S.booked[c.id] || (c.spots<=0?'full':'open');
+
+// ---------- ui helpers ----------
+function beltGraphic(belt,bcolor,str,big){ const h=big?'h-9':'h-6'; const w=big?'w-16':'w-11';
+  const stripes=Array.from({length:4}).map((_,i)=>`<span class="inline-block ${big?'w-1.5 h-7':'w-1 h-4'} mx-[1px] rounded-sm" style="background:${i<str?(belt==='Black'?'#fff':'#2E323C'):'#ffffff22'}"></span>`).join('');
+  const rank=belt==='Black'?'#C8102E':'#2E323C';
+  return `<span class="inline-flex items-center ${w} ${h} rounded-md overflow-hidden align-middle" style="background:${bcolor};border:1px solid #d3d8df"><span class="flex-1"></span><span class="${big?'px-1.5':'px-1'} ${h} flex items-center" style="background:${rank}">${stripes}</span></span>`; }
+function bars(arr,h){ const H=h||44; return `<div class="flex items-end gap-[2px]" style="height:${H}px">`+arr.map(v=>`<div class="flex-1 rounded-sm bg-navy/70" style="height:${20+v*30}%"></div>`).join('')+`</div>`; }
+function fauxQR(){ let s=''; for(let r=0;r<13;r++){ for(let c=0;c<13;c++){ const on=((r*c+r+c)%3===0)||((r+c)%5===0)||(r<3&&c<3)||(r<3&&c>9)||(r>9&&c<3); s+=`<div class="${on?'bg-ink':''}"></div>`; } } return `<div class="grid bg-white p-2 rounded-xl" style="grid-template-columns:repeat(13,1fr);width:170px;height:170px;gap:2px">${s}</div>`; }
+// Real, scannable member QR. The kiosk camera decodes this exact payload (see kiosk.html parseQR).
+// Compact pipe format ON PURPOSE: fewer chars -> version-3 QR (29 modules) instead of v6 (41) ->
+// bigger modules on screen -> decodes through a fixed-focus iPad front camera. JSON didn't.
+// `x` (base36 30s bucket) rotates so the code visibly refreshes like a live pass.
+const QR_ROTATE_S=30;
+// Bound device -> CP2 with a SHORT id prefix in field 2 (10 hex chars, dashes
+// stripped). The full 36-char uuid ~doubled QR density vs the deliberately-sparse
+// CP1 — a fixed-focus iPad camera needs big modules. Kiosk + data.js resolve
+// short prefixes against the canonical member id.
+// Unbound demo -> CP1, byte-for-byte as before. Same 30s bucket rotation either way.
+function qrPayload(p){ const b36=Math.floor(Date.now()/(QR_ROTATE_S*1000)).toString(36); const ak=p.program==='Kids'?'K':'A';
+  const nm=String(p.name).replace(/\|/g,'/'); // a '|' in a free-text name must not shift the fields
+  if(p.bound&&p.cloudId) return ['CP2',String(p.cloudId).replace(/-/g,'').slice(0,10),nm,p.belt,p.str,ak,b36].join('|');
+  return ['CP1',nm,p.belt,p.str,ak,b36].join('|'); }
+// Accented names (João, María…) need real UTF-8 in the QR — the vendored encoder
+// defaults to latin-1, which the kiosk's jsQR silently fails to decode.
+try{ if(window.qrcode&&qrcode.stringToBytesFuncs&&qrcode.stringToBytesFuncs['UTF-8']) qrcode.stringToBytes=qrcode.stringToBytesFuncs['UTF-8']; }catch(e){}
+function qrBox(p){ try{
+    const qr=qrcode(0,'M'); qr.addData(qrPayload(p)); qr.make();
+    // default margin = 4-module quiet zone — jsQR needs it, don't set margin:0
+    const svg=qr.createSvgTag({cellSize:2,scalable:true}).replace('<svg ','<svg style="width:100%;height:100%;display:block" ');
+    return `<div class="bg-white p-2 rounded-xl" style="width:216px;height:216px">${svg}</div>`;
+  }catch(e){ return fauxQR(); } }
+function toast(msg){ const t=document.createElement('div'); t.className='absolute left-1/2 -translate-x-1/2 bottom-24 bg-ink text-white text-[12px] px-3 py-2 rounded-lg z-40 fade'; t.style.maxWidth='300px'; t.innerHTML=msg; document.getElementById('app').appendChild(t); setTimeout(()=>t.remove(),2200); }
+function go(tab){ S.tab=tab; S.stack=[]; save(); render(); }
+function push(screen,data){ S.stack.push({screen,data:data||{}}); save(); render(); }
+function pop(){ S.stack.pop(); save(); render(); }
+const TABS=[['home','🏠','Home'],['schedule','📅','Schedule'],['checkin','✅','Check-in'],['progress','📈','Progress'],['more','⋯','More']];
+
+// ---------- screens ----------
+// Real app = no fake status theater (clock/signal/battery). This row is now a quiet
+// spacer that also absorbs the notch / real status bar via env(safe-area-inset-top).
+function statusbar(){ return `<div class="sbar"></div>`; }
+function topbar(title, withProfile){
+  if(withProfile){ const p=prof(); const rb=realBound();
+    // Real bound mode: one person, one card — no profile switcher (fake family +
+    // teaching roster are demo fictions), so the chip is plain identity, no ▾.
+    const chip=`<span class="w-8 h-8 rounded-full bg-navy text-white grid place-items-center text-xs font-bold">${p.first[0]}</span><span class="text-left leading-tight"><span class="block text-[10px] text-slate">${p.kind==='kid'?'Managing':'Member'}</span><span class="font-bold text-sm flex items-center gap-1">${p.first}${cloudDot(p)}${rb?'':' <span class="text-slate text-[10px]">▾</span>'}</span></span>`;
+    return `<div class="px-5 pt-1 pb-3 flex items-center justify-between">
+      ${rb?`<div class="flex items-center gap-2">${chip}</div>`:`<button data-sheet="profiles" class="pressable flex items-center gap-2">${chip}</button>`}
+      <button data-screen="announcements" class="pressable relative text-xl">🔔${unread()?`<span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-crimson"></span>`:''}</button>
+    </div>`; }
+  return `<div class="px-5 pt-1 pb-3 flex items-center gap-2">${S.stack.length?`<button data-pop class="pressable text-xl text-navy">‹</button>`:''}<div class="font-bold text-lg">${title}</div></div>`;
+}
+function unread(){ return annList().filter(a=>!S.read[a.id]).length; }
+
+function scrHome(){ const p=prof(); const isKid=p.kind==='kid'; const rb=realBound();
+  // Real bound mode: no fake "NEXT CLASS · booked ✓" card — booking doesn't exist
+  // yet, and a real member would take it as fact. Demo keeps it.
+  const next=rb?null:CLASSES.find(c=>c.next && c.program===p.program);
+  // Bound member: the Home hero needs the live count too — same cached fetch as Progress.
+  if(p.bound&&(ATT_LIVE.state==='idle'||(ATT_LIVE.state!=='loading'&&Date.now()-ATT_LIVE.at>30000))) fetchLiveAttendance();
+  const _hc=(p.bound&&ATT_LIVE.state==='fail')?attCache():null; // offline -> last synced count
+  const total=(p.bound&&ATT_LIVE.state==='ok'&&ATT_LIVE.data)?(ATT_LIVE.data.count||0):_hc?(_hc.data.count||0):(S.attended[p.id]||0); const ann=annList().find(x=>!S.read[x.id]);
+  return topbar('',true)+`<div class="body px-5 pb-4 fade">
+    <div class="text-[12px] text-slate">${isKid?'Managing':'Boa noite'} 🥋</div><div class="text-xl font-bold text-navy">${isKid?p.first:'Olá, '+p.first}</div>
+    ${isKid?`<div class="mt-1 inline-block text-[11px] bg-teal/10 text-teal rounded-lg px-2 py-1">Managing ${p.first}’s account · billing stays on your profile</div>`:''}
+    ${next?`<div class="mt-3 rounded-2xl bg-navy text-white p-4">
+      <div class="text-[10px] opacity-70">NEXT CLASS · TODAY · ${next.t} · booked ✓</div>
+      <div class="text-base font-bold mt-0.5">${next.name}</div><div class="text-[12px] opacity-80">${next.coach}</div>
+      <div class="mt-3 flex gap-2"><button data-go="checkin" class="pressable bg-crimson rounded-lg px-3 py-2 text-[12px] font-bold">Check in</button><button data-class="${next.id}" class="pressable bg-white/15 rounded-lg px-3 py-2 text-[12px] font-semibold">Details</button></div></div>`:''}
+    <div class="mt-3 rounded-2xl border border-slate/15 p-4">
+      <div class="text-[10px] text-slate uppercase tracking-wide">Belt progress</div>
+      <div class="flex items-center gap-2 mt-1.5">${beltGraphic(p.belt,p.bcolor,p.str)}<span class="font-semibold text-sm">${p.belt} · ${p.str} stripe${p.str!==1?'s':''}</span></div>
+      <div class="h-2 bg-mist rounded mt-2.5"><div class="h-2 bg-good rounded" style="width:${Math.min(100,Math.round(total/p.req*100))}%"></div></div>
+      <div class="text-[11px] text-slate mt-1">${total} / ${p.req} classes toward next stripe</div>
+    </div>
+    ${p.bound&&canInstall()&&!installHintHidden()?`<div class="mt-3 rounded-2xl border border-slate/15 p-3 flex items-center gap-2">
+      <span class="text-lg">📲</span><div class="flex-1 text-[12px] leading-snug"><b>Put the app on your home screen</b><div class="text-slate text-[11px]">Opens in one tap · your check-in code works offline</div></div>
+      <button data-act="install" class="pressable shrink-0 text-[11px] font-bold bg-navy text-white rounded-lg px-2.5 py-1.5">Install</button>
+      <button data-act="installdismiss" aria-label="Dismiss" class="pressable shrink-0 text-slate text-sm px-1">✕</button>
+    </div>`:''}
+    ${ann?`<button data-screen="announcements" class="pressable mt-3 w-full text-left rounded-2xl border border-gold/40 bg-gold/10 p-3 flex gap-2 items-start"><span>${ann.ic}</span><div><div class="text-[12px] font-semibold">${esc(ann.title)}</div><div class="text-[11px] text-slate">${ann.from} · ${ann.time}</div></div></button>`:''}
+    <div class="grid grid-cols-3 gap-2 mt-3 text-center text-[11px]">
+      <button data-go="schedule" class="pressable rounded-xl bg-mist p-3"><div class="text-lg">📅</div>${rb?'Schedule':'Book a class'}</button>
+      <button data-go="progress" class="pressable rounded-xl bg-mist p-3"><div class="text-lg">📈</div>${isKid?p.first+'’s progress':'My progress'}</button>
+      ${isKid?`<button data-go="checkin" class="pressable rounded-xl bg-mist p-3"><div class="text-lg">✅</div>Check in</button>`:`<button data-screen="billing" class="pressable rounded-xl bg-mist p-3"><div class="text-lg">💳</div>Billing</button>`}
+    </div>
+  </div>`;
+}
+function scrSchedule(){ const p=prof(); const rb=realBound();
+  const list=CLASSES.filter(c=>c.d===S.selDay && c.program===p.program);
+  // Real bound mode: the timetable stays, but no "Book" pills / fake spot counts —
+  // booking isn't on yet and a fake "Booked ✓" would be believed. One honest line instead.
+  return topbar('',true)+`<div class="body px-5 pb-4 fade">
+    <div class="font-bold text-lg mb-1">Schedule</div>
+    <div class="text-[11px] text-slate mb-2">${p.program} classes${rb?'':' · tap a class to book'}</div>
+    ${rb?`<div class="mb-3">${notYet('Booking isn’t switched on for your gym yet — classes are drop-in. Just come train and show your code at the door.')}</div>`:''}
+    <div class="flex gap-1.5 mb-3">${DAYS.map((d,i)=>`<button data-day="${i}" class="pressable flex-1 py-2 rounded-xl text-[12px] font-semibold ${i===S.selDay?'bg-navy text-white':'bg-mist text-slate'}">${d}${i===TODAY?'<div class="text-[8px] font-normal opacity-70">today</div>':''}</button>`).join('')}</div>
+    ${list.length?list.map(c=>{ if(rb) return `<div data-class="${c.id}" class="pressable w-full text-left rounded-2xl border border-slate/15 p-3 mb-2 flex items-center justify-between gap-2"><div><div class="font-semibold text-sm text-navy">${c.name}</div><div class="text-[11px] text-slate">${c.t} · ${c.coach} · tap for details</div></div><span class="text-slate">›</span></div>`;
+      const st=classState(c); const lbl={open:'Book',booked:'Booked ✓',waitlist:'Waitlisted',full:'Waitlist'}[st]; const cls={open:'bg-navy text-white',booked:'bg-good/15 text-good',waitlist:'bg-gold/20 text-gold',full:'bg-crimson/10 text-crimson'}[st];
+      return `<div data-class="${c.id}" class="pressable w-full text-left rounded-2xl border border-slate/15 p-3 mb-2 flex items-center justify-between gap-2"><div><div class="font-semibold text-sm text-navy">${c.name}</div><div class="text-[11px] text-slate">${c.t} · ${c.coach} · ${st==='full'&&!S.booked[c.id]?'full':c.spots+' spots'} · tap for details</div></div><button data-book="${c.id}" class="pressable shrink-0 text-[11px] font-bold rounded-full px-3 py-1.5 ${cls}">${lbl}</button></div>`;
+    }).join('') : '<div class="text-center text-slate text-sm py-8">No classes this day.</div>'}
+  </div>`;
+}
+function scrClassDetail(d){ const c=CLASSES.find(x=>x.id===d.id); if(!c)return scrSchedule();
+  const desc=c.name.includes('Fundamentals')?'Core techniques and drilling for newer students.':c.name.includes('Open Mat')?'Open training — roll at your own pace, all levels.':c.name.includes('Kids')?'Age-appropriate games, technique, and light sparring.':'Technique of the day, drilling, and live rounds for all levels.';
+  // Real bound mode: no Book/Waitlist action, no fake spots/status — the class info
+  // plus the honest drop-in line. Demo below keeps the full booking fiction.
+  if(realBound()) return topbar(c.name)+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-xl font-bold text-navy">${c.name}</div>
+      <div class="text-[13px] text-slate mt-0.5">${DAYS[c.d]} · ${c.t}</div>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-[12px]">
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Coach</div><div class="font-semibold">${c.coach}</div></div>
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Program</div><div class="font-semibold">${c.program}</div></div>
+      </div>
+      <p class="text-[12px] text-slate mt-3">${desc}</p>
+    </div>
+    <div class="mt-4">${notYet('No booking needed — this class is drop-in. Just show up and check in with your code at the door. 🥋')}</div>
+  </div>`;
+  const st=classState(c);
+  const action = st==='booked'?['Cancel booking','bg-crimson/10 text-crimson','unbook'] : st==='waitlist'?['Leave waitlist','bg-slate/15 text-slate','unbook'] : c.spots<=0?['Join waitlist','bg-gold text-ink','waitlist'] : ['Book this class','bg-navy text-white','book'];
+  return topbar(c.name)+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-xl font-bold text-navy">${c.name}</div>
+      <div class="text-[13px] text-slate mt-0.5">${DAYS[c.d]} · ${c.t}</div>
+      <div class="grid grid-cols-2 gap-2 mt-3 text-[12px]">
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Coach</div><div class="font-semibold">${c.coach}</div></div>
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Program</div><div class="font-semibold">${c.program}</div></div>
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Spots</div><div class="font-semibold">${c.spots>0?c.spots+' of '+c.cap:'Full ('+c.cap+')'}</div></div>
+        <div class="bg-mist rounded-lg p-2"><div class="text-slate text-[10px]">Status</div><div class="font-semibold">${st==='booked'?'You’re booked':st==='waitlist'?'Waitlisted':'Open'}</div></div>
+      </div>
+      <p class="text-[12px] text-slate mt-3">${desc}</p>
+    </div>
+    <button data-act="${action[2]}" data-id="${c.id}" class="pressable w-full mt-4 rounded-xl py-3 text-sm font-bold ${action[1]}">${action[0]}</button>
+    ${st==='booked'?`<div class="text-[11px] text-good text-center mt-2">Reminder set · we’ll nudge you before class</div>`:''}
+  </div>`;
+}
+function scrCheckin(){ const p=prof(); const rb=realBound(); const next=rb?null:CLASSES.find(c=>c.next && c.program===p.program);
+  // Real bound mode: the QR is real (kiosk decodes it) — everything fake around it
+  // goes: no "No class booked" (booking doesn't exist), no Wallet button (no pass
+  // exists to add — same demoMode() gate as the simulate-scan button).
+  return topbar('',true)+`<div class="body px-5 pb-4 fade text-center">
+    <div class="font-bold text-lg">Check in</div>
+    <div class="text-[12px] text-slate">Hold this code up to the kiosk camera</div>
+    <div class="mx-auto mt-4 w-fit" id="qrbox">${qrBox(p)}</div>
+    <div class="mt-3 text-sm font-semibold text-navy">${rb?esc(p.name):next?next.name+' · '+next.t:'No class booked'}</div>
+    <div class="text-[11px] text-slate">Refreshes in <span id="qrleft">${QR_ROTATE_S - Math.floor(Date.now()/1000)%QR_ROTATE_S}</span>s · works offline</div>
+    ${demoMode()?`<button data-act="wallet" class="pressable mt-3 text-[12px] border border-slate/25 rounded-lg px-3 py-2">＋ Add to Apple Wallet</button>`:''}
+    ${demoMode()?`<button data-act="scan" class="pressable block mx-auto mt-4 bg-navy text-white rounded-xl px-5 py-3 text-sm font-bold">Simulate kiosk scan</button>`:''}
+  </div>`;
+}
+// Live pass: tick the countdown every second and regenerate the QR when the 30s window rolls.
+setInterval(()=>{ try{
+  const lb=document.getElementById('qrleft'), box=document.getElementById('qrbox'); if(!lb||!box) return;
+  const left=QR_ROTATE_S - Math.floor(Date.now()/1000)%QR_ROTATE_S;
+  lb.textContent=left;
+  if(left===QR_ROTATE_S) box.innerHTML=qrBox(prof());
+}catch(e){} },1000);
+function scrProgress(){ const p=prof(); const a=att30(p.id.length+1); const days=a.filter(v=>v>0).length;
+  // Bound member: fetch live attendance (cached ~30s). Unbound demo: untouched local behavior.
+  if(p.bound&&(ATT_LIVE.state==='idle'||(ATT_LIVE.state!=='loading'&&Date.now()-ATT_LIVE.at>30000))) fetchLiveAttendance();
+  const live=(p.bound&&ATT_LIVE.state==='ok')?ATT_LIVE.data:null;
+  const loading=p.bound&&ATT_LIVE.state==='loading';
+  const cached=(p.bound&&ATT_LIVE.state==='fail')?attCache():null; // last synced truth, if any
+  const total=live?(live.count||0):cached?(cached.data.count||0):(S.attended[p.id]||0);
+  const localCard=hint=>`<div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="text-[10px] text-slate uppercase tracking-wide mb-2">Attendance · last 30 days</div>
+      ${bars(a)}<div class="text-[11px] text-slate mt-1">Trained ${days} of 30 days${hint}</div>
+    </div>`;
+  const recentRows=list=>(list&&list.length)?list.slice(0,8).map(r=>{ let d=''; try{ d=new Date(r.at).toLocaleString('en-US',{month:'short',day:'numeric'}); }catch(e){ d=String(r.at||'').slice(0,10); }
+        return `<div class="flex justify-between items-center py-1.5 border-t border-slate/10 first:border-0"><span class="text-[12px] font-semibold">${esc(r.cls||'Class')}</span><span class="text-[11px] text-slate">${d}</span></div>`; }).join('')
+        :`<div class="text-[12px] text-slate py-1">No check-ins yet — see you on the mat! 🥋</div>`;
+  let attCard;
+  if(!p.bound) attCard=localCard('');
+  else if(loading) attCard=`<div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="text-[10px] text-slate uppercase tracking-wide mb-2">Recent check-ins</div>
+      <div class="shimmer h-4 mb-2" style="width:84%"></div><div class="shimmer h-4 mb-2" style="width:65%"></div><div class="shimmer h-4" style="width:74%"></div>
+    </div>`;
+  else if(live) attCard=`<div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="flex justify-between items-center mb-1"><div class="text-[10px] text-slate uppercase tracking-wide">Recent check-ins</div><div class="text-[10px] text-good/80">☁ live</div></div>
+      ${recentRows(live.recent)}
+    </div>`;
+  // Offline + we HAVE a last synced payload: show that truth, dimmed and dated.
+  // Never the demo's deterministic fake bars — they aren't this member's numbers.
+  else if(cached) attCard=`<div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="flex justify-between items-center mb-1"><div class="text-[10px] text-slate uppercase tracking-wide">Recent check-ins</div><div class="text-[10px] text-slate/50">☁ offline — last updated ${relTime(cached.at)}</div></div>
+      ${recentRows(cached.data.recent)}
+    </div>`;
+  // Offline and never synced: no bars, just the honest empty state.
+  else attCard=`<div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="text-[10px] text-slate uppercase tracking-wide mb-2">Recent check-ins</div>
+      <div class="text-[12px] text-slate py-1">Offline — your check-ins will show when you’re back online.</div>
+    </div>`;
+  return topbar('',true)+`<div class="body px-5 pb-4 fade">
+    <div class="font-bold text-lg mb-2">${p.kind==='kid'?p.first+'’s journey':'Your journey'}</div>
+    <div class="rounded-2xl border border-slate/15 p-4 text-center">
+      <div class="flex justify-center">${beltGraphic(p.belt,p.bcolor,p.str,true)}</div>
+      <div class="font-bold mt-2">${p.belt} · ${p.str} stripe${p.str!==1?'s':''}</div>
+      <div class="text-[11px] text-slate">Since ${p.since} · ${loading?'…':total} classes</div>
+    </div>
+    <div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="flex justify-between items-center"><div class="text-[10px] text-slate uppercase tracking-wide">Toward next stripe</div><div class="text-[11px] font-semibold">${loading?'…':total}/${p.req}</div></div>
+      <div class="h-2 bg-mist rounded mt-2"><div class="h-2 bg-good rounded" style="width:${Math.min(100,Math.round(total/p.req*100))}%"></div></div>
+    </div>
+    ${attCard}
+    <div class="mt-3"><div class="text-[10px] text-slate uppercase tracking-wide mb-1">Timeline</div>
+      ${p.timeline.map(([e,t,d])=>`<div class="flex gap-2 py-1.5 items-start"><span>${e}</span><div><div class="text-[12px] font-semibold">${esc(t)}</div><div class="text-[11px] text-slate">${d}</div></div></div>`).join('')}</div>
+  </div>`;
+}
+function scrMore(){ const isKid=prof().kind==='kid'; const rb=realBound();
+  // Real bound mode: no Family entry (one person, one card — fake family is demo-only).
+  // ?demo=1: no Install entry — the installed app opens to the locked gate, which
+  // would whiplash a demo visitor.
+  const items=[ ...(!isKid?[['billing','💳','Billing & membership']]:[]), ...(rb?[]:[['family','👨‍👩‍👧','Family']]),['profile','📝',(isKid?prof().first+'’s profile & waivers':'Profile & waivers')],['notifs','🔔','Notifications'],['announcements','📣','Announcements'],
+    ...(canInstall()&&!DEMO_PARAM?[['install','📲','Install the app']]:[])];
+  return topbar('More')+`<div class="body px-5 pb-4 fade">
+    ${isKid?`<div class="mb-3 text-[11px] bg-teal/10 text-teal rounded-lg px-3 py-2">Managing ${prof().first}. Billing &amp; payments stay on your own profile — switch back via Family.</div>`:''}
+    ${items.map(([s,ic,l])=>`<button data-screen="${s}" class="pressable w-full flex items-center justify-between rounded-xl border border-slate/15 p-3.5 mb-2"><span class="flex items-center gap-3 text-sm font-semibold"><span class="text-lg">${ic}</span>${l}</span><span class="text-slate">›</span></button>`).join('')}
+    <button data-act="tour" class="pressable w-full flex items-center justify-between rounded-xl border border-slate/15 p-3.5 mb-2"><span class="flex items-center gap-3 text-sm font-semibold"><span class="text-lg">🧭</span>How it works</span><span class="text-slate">›</span></button>
+    ${DEMO_PARAM?`<button data-act="resetdemo" class="pressable w-full flex items-center justify-between rounded-xl border border-slate/15 p-3.5 mb-2"><span class="flex items-center gap-3 text-sm font-semibold"><span class="text-lg">↺</span>Reset demo</span><span class="text-slate">›</span></button>`:''}
+    ${rb?`<button data-act="unlink" class="pressable w-full text-center text-crimson text-sm font-semibold py-3">Unlink this phone</button>`
+       :`<button data-act="logout" class="pressable w-full text-center text-crimson text-sm font-semibold py-3">Log out</button>`}
+    <div class="text-[10px] text-slate/50 text-center mt-2">Cia Paulista member app${window.__CP_BUILD?' · build '+esc(window.__CP_BUILD):''}</div>
+  </div>`;
+}
+function scrInstall(){ const ua=navigator.userAgent||''; const ios=/iphone|ipad|ipod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); const android=/android/i.test(ua);
+  // Three real situations: iPhone/iPad → Safari share-sheet steps; Android → browser
+  // menu steps; anything else (a desktop browser) → point at the phone instead of
+  // showing phone-menu instructions that don't exist here.
+  return topbar('Install the app')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-sm font-bold">Add Cia Paulista to your home screen</div>
+      <div class="text-[12px] text-slate mt-1">Opens full screen in one tap — and your check-in code works even without internet.</div>
+    </div>
+    ${BIP?`<button data-act="install" class="pressable w-full mt-3 bg-navy text-white rounded-xl py-3 text-sm font-bold">Install app</button>`:''}
+    ${ios?`<div class="rounded-2xl border border-slate/15 p-4 mt-3 text-[13px] leading-relaxed">
+      <div class="font-semibold mb-2">On iPhone or iPad</div>
+      <div class="flex gap-2 py-1"><span class="text-slate">1.</span><div>Tap the <b>Share</b> button <span class="inline-block border border-slate/30 rounded px-1.5">⬆︎</span> in Safari</div></div>
+      <div class="flex gap-2 py-1"><span class="text-slate">2.</span><div>Scroll down and tap <b>Add to Home Screen</b></div></div>
+      <div class="flex gap-2 py-1"><span class="text-slate">3.</span><div>Tap <b>Add</b> — that’s it</div></div>
+    </div>`:android?`<div class="rounded-2xl border border-slate/15 p-4 mt-3 text-[13px] leading-relaxed">
+      <div class="font-semibold mb-2">On Android</div>
+      <div class="flex gap-2 py-1"><span class="text-slate">1.</span><div>Open the browser menu <b>⋮</b> (top right)</div></div>
+      <div class="flex gap-2 py-1"><span class="text-slate">2.</span><div>Tap <b>Install app</b> (or <b>Add to Home screen</b>)</div></div>
+    </div>`:`<div class="rounded-2xl border border-slate/15 p-4 mt-3 text-[13px] leading-relaxed">
+      <div class="font-semibold mb-2">On your phone</div>
+      <div class="text-slate">The home-screen app lives on your phone — open this same address in your phone’s browser and the install option appears there. On this computer, just keep using it right here.</div>
+    </div>`}
+  </div>`;
+}
+function scrBilling(){ const p=prof(); const family=PROFILES.reduce((s,x)=>s+x.price,0);
+  // Real bound mode: NO fake invoices, no fake "Pay now", and above all no fake
+  // "Cancel membership" (a member who believes they cancelled — and nobody was
+  // told — is the worst fiction in the app). One honest panel until payments land.
+  if(realBound()) return topbar('Billing')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-sm font-bold text-navy">Payments aren’t in the app yet</div>
+      <div class="text-[12px] text-slate mt-1.5 leading-relaxed">For now your membership and payments are handled at the gym. Anything billing — updating a card, an invoice, a freeze, or cancelling — just ask at the front desk and they’ll sort it on the spot.</div>
+    </div>
+    <div class="mt-3">${notYet('When payments move into the app, everything will show up right here.')}</div>
+  </div>`;
+  return topbar('Billing')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-sm font-bold">${p.plan}</div><div class="text-[12px] text-slate">${'$'+p.price}/mo · next charge Jul 1</div><div class="text-[12px] text-good mt-1">● Active</div>
+    </div>
+    <div class="rounded-2xl bg-mist p-3 mt-2 text-[12px] text-slate">Family total: <b class="text-navy">${'$'+family}/mo</b> across ${PROFILES.length} members · one bill</div>
+    <div class="mt-3 space-y-2">
+      ${[['bill_card','Update payment card',(S.cardUpdated?'Visa ending 8821 · updated':'Visa ending 4242 · expiring soon')],['bill_pay','Pay an invoice',(S.paid?'all caught up 🎉':'1 past due · $165')],['bill_freeze','Freeze / hold membership','pause while travelling'],['bill_cancel','Cancel membership',''],['bill_receipts','View receipts','12 months on file']].map(([s,l,sub])=>`<button data-screen="${s}" class="pressable w-full flex items-center justify-between rounded-xl border border-slate/15 px-3.5 py-3 text-left"><span><span class="text-[13px] font-semibold">${l}</span>${sub?`<span class="block text-[11px] text-slate">${sub}</span>`:''}</span><span class="text-slate">›</span></button>`).join('')}
+    </div>
+    <div class="text-[10px] text-slate/60 text-center mt-3">Secure payments via Stripe</div>
+  </div>`;
+}
+function scrBillCard(){ const u=S.cardUpdated;
+  return topbar('Update card')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border ${u?'border-good/40 bg-good/5':'border-gold/40 bg-gold/10'} p-4 flex items-center justify-between">
+      <div><div class="text-[13px] font-semibold">${u?'Visa •••• 8821':'Visa •••• 4242'}</div><div class="text-[11px] ${u?'text-good':'text-gold'}">${u?'Updated · expires 09/29':'Expires 07/26 · expiring soon'}</div></div><span class="text-2xl">💳</span></div>
+    <div class="mt-4 space-y-2">
+      ${[['Card number','4242 4242 4242 4242'],['Name on card','Carlos Mendez']].map(([l,v])=>`<label class="block text-[12px]"><span class="text-slate">${l}</span><input class="w-full mt-1 rounded-lg border border-slate/30 px-3 py-2 text-sm" value="${v}"/></label>`).join('')}
+      <div class="grid grid-cols-3 gap-2">${[['Expiry','07/26'],['CVC','123'],['ZIP','91016']].map(([l,v])=>`<label class="block text-[12px]"><span class="text-slate">${l}</span><input class="w-full mt-1 rounded-lg border border-slate/30 px-3 py-2 text-sm" value="${v}"/></label>`).join('')}</div>
+    </div>
+    <button data-act="savecard" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold">Save card</button>
+    <div class="text-[10px] text-slate/60 text-center mt-2">🔒 Secured by Stripe · we never store full card numbers</div>
+  </div>`;
+}
+function scrBillPay(){ if(S.paid) return topbar('Pay invoice')+`<div class="body px-5 pb-4 fade text-center pt-12"><div class="w-20 h-20 rounded-full bg-good text-white grid place-items-center text-4xl mx-auto">✓</div><div class="font-bold text-navy mt-3">You’re all caught up</div><div class="text-[12px] text-slate mt-1">$0.00 due · paid through Jul 1</div></div>`;
+  return topbar('Pay invoice')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-crimson/30 bg-crimson/5 p-4 flex justify-between items-start"><div><div class="text-[13px] font-semibold">Adult Unlimited — June</div><div class="text-[11px] text-crimson">Past due · card was declined</div></div><div class="text-lg font-bold">$165.00</div></div>
+    <div class="mt-3 rounded-xl bg-mist p-3 text-[12px] text-slate">Paying with Visa •••• ${S.cardUpdated?'8821':'4242'}. <button data-screen="bill_card" class="text-navy font-semibold">Change card</button></div>
+    <button data-act="paynow" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold">Pay $165.00 now</button>
+    <div class="text-[10px] text-slate/60 text-center mt-2">🔒 Secured by Stripe</div>
+  </div>`;
+}
+function scrBillFreeze(){ const opt=S.freezeOpt||'1w'; const n=S.freezeN||1; const unit=S.freezeUnit||'months'; const custom=opt==='custom';
+  const lbl=custom?(n+' '+unit):({'1w':'1 week','2w':'2 weeks','3w':'3 weeks'}[opt]);
+  const opts=[['1w','1 week'],['2w','2 weeks'],['3w','3 weeks'],['custom','Custom']];
+  return topbar('Freeze membership')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-xl bg-mist p-3 text-[12px] text-slate">Freeze your membership — billing pauses and resumes automatically. Your spot, rate, and progress are kept. Maximum 3 months.</div>
+    <div class="text-[12px] font-semibold mt-4 mb-1">How long?</div>
+    <div class="grid grid-cols-2 gap-2">${opts.map(([v,l])=>`<button data-act="freezeopt" data-opt="${v}" class="pressable py-3 rounded-xl text-sm font-semibold ${opt===v?'bg-navy text-white':'bg-mist text-slate'}">${l}</button>`).join('')}</div>
+    ${custom?`<div class="mt-3 rounded-xl border border-slate/15 p-3">
+      <div class="flex items-center justify-between"><span class="text-[12px] text-slate">Amount</span>
+        <div class="flex items-center gap-3"><button data-act="freezedec" class="pressable w-8 h-8 rounded-full bg-mist text-lg font-bold">−</button><span class="font-bold w-6 text-center">${n}</span><button data-act="freezeinc" class="pressable w-8 h-8 rounded-full bg-mist text-lg font-bold">＋</button></div></div>
+      <div class="flex gap-2 mt-3">${['days','weeks','months'].map(u=>`<button data-act="freezeunit" data-unit="${u}" class="pressable flex-1 py-2 rounded-lg text-[12px] font-semibold ${unit===u?'bg-navy text-white':'bg-mist text-slate'}">${u}</button>`).join('')}</div>
+      <div class="text-[11px] text-slate mt-2">Capped at 3 months total.</div></div>`:''}
+    <div class="mt-3 text-[12px]"><span class="text-slate">Freeze for</span> <b>${lbl}</b> · <span class="text-slate">resumes automatically</span></div>
+    <button data-act="freezeconfirm" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold">Confirm freeze</button>
+  </div>`;
+}
+function scrBillCancel(){
+  return topbar('Cancel membership')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-gold/40 bg-gold/10 p-4"><div class="font-semibold text-sm">Before you go…</div><div class="text-[12px] text-slate mt-1">A freeze keeps your spot, progress, and rate while life happens. Want to pause instead?</div><button data-act="freezeinstead" class="pressable mt-2 bg-navy text-white rounded-lg px-3 py-2 text-[12px] font-bold">Freeze instead</button></div>
+    <label class="block text-[12px] mt-4"><span class="text-slate">Reason (optional)</span><select class="w-full mt-1 rounded-lg border border-slate/30 px-3 py-2 text-sm"><option>Moving away</option><option>Cost</option><option>Injury</option><option>Not enough time</option><option>Other</option></select></label>
+    <div class="text-[11px] text-slate mt-3">Your membership stays active to the end of the current period. You’re welcome back anytime.</div>
+    <button data-act="cancelconfirm" class="pressable w-full mt-4 border border-crimson/40 text-crimson rounded-xl py-3 text-sm font-bold">Request cancellation</button>
+  </div>`;
+}
+function scrBillReceipts(){ const months=['Jun 1, 2026','May 1, 2026','Apr 1, 2026','Mar 1, 2026','Feb 1, 2026','Jan 1, 2026'];
+  return topbar('Receipts')+`<div class="body px-5 pb-4 fade">
+    ${months.map(m=>`<button data-receipt="${m}" class="pressable w-full text-left flex items-center justify-between rounded-xl border border-slate/15 px-3.5 py-3 mb-2"><div><div class="text-[13px] font-semibold">${m}</div><div class="text-[11px] text-slate">Adult Unlimited</div></div><div class="flex items-center gap-3"><span class="text-[13px] font-semibold">$165.00</span><span class="text-[12px] text-navy font-semibold">View ›</span></div></button>`).join('')}
+    <div class="text-[11px] text-slate/60 text-center mt-1">Receipts are also emailed each month.</div>
+  </div>`;
+}
+function scrBillReceipt(d){ const m=d.month||'Jun 1, 2026';
+  return topbar('Receipt')+`<div class="body px-4 pb-4 fade bg-mist">
+    <div class="bg-white mx-auto my-3 shadow-lg rounded-sm p-5" style="max-width:340px">
+      <div class="flex justify-between items-start border-b border-slate/15 pb-3">
+        <div class="flex items-center gap-2"><div class="w-9 h-9 rounded-lg bg-crimson text-white grid place-items-center font-black text-sm">CP</div><div><div class="font-bold text-navy text-sm leading-tight">Cia Paulista Jiu-Jitsu</div><div class="text-[9px] text-slate">819 S Myrtle Ave, Monrovia, CA</div></div></div>
+        <div class="text-right"><div class="text-[9px] text-slate uppercase">Receipt</div><div class="text-[10px] font-semibold">#CP-${m.replace(/\D/g,'').slice(0,6)}</div></div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-[10px] mt-3"><div><div class="text-slate">Billed to</div><div class="font-semibold">Carlos Mendez</div></div><div><div class="text-slate">Date</div><div class="font-semibold">${m}</div></div></div>
+      <table class="w-full text-[11px] mt-4"><thead><tr class="border-b border-slate/15"><th class="text-left py-1 text-slate font-semibold">Description</th><th class="text-right py-1 text-slate font-semibold">Amount</th></tr></thead><tbody>
+        <tr><td class="py-1.5">Adult Unlimited — monthly membership</td><td class="text-right">$165.00</td></tr>
+        <tr><td class="py-1 text-slate">Tax</td><td class="text-right text-slate">$0.00</td></tr></tbody></table>
+      <div class="flex justify-between border-t border-slate/15 mt-2 pt-2 text-sm font-bold"><span>Total</span><span>$165.00</span></div>
+      <div class="mt-4 flex items-center justify-between">
+        <span class="inline-block border-2 border-good text-good font-extrabold text-xs px-3 py-1 rounded -rotate-6">PAID</span>
+        <span class="text-[10px] text-slate">Visa •••• ${S.cardUpdated?'8821':'4242'}</span>
+      </div>
+      <div class="text-[9px] text-slate/60 text-center mt-4">Thank you for training with us · generated by Cia Paulista</div>
+    </div>
+    <button data-act="dlreceipt" class="pressable w-full bg-navy text-white rounded-xl py-3 text-sm font-bold mt-1">Download PDF</button>
+  </div>`;
+}
+function scrWaiver(d){ const w=WAIVERS.find(x=>x.key===(d&&d.key))||WAIVERS[0];
+  return topbar('Document')+`<div class="body px-4 pb-4 fade bg-mist">
+    <div class="bg-white mx-auto my-3 shadow-lg rounded-sm p-5" style="max-width:340px">
+      <div class="text-center border-b border-slate/15 pb-3"><div class="w-9 h-9 rounded-lg bg-crimson text-white grid place-items-center font-black text-sm mx-auto">CP</div><div class="font-bold text-navy text-sm mt-1">Cia Paulista Jiu-Jitsu</div><div class="text-[11px] text-slate mt-1 font-semibold">${w.title}</div></div>
+      <div class="text-[10px] text-slate mt-3 space-y-2 leading-relaxed">
+        <p>I acknowledge that Brazilian Jiu-Jitsu and related activities involve inherent risks of injury. I voluntarily assume all such risks.</p>
+        <p>I release and hold harmless Cia Paulista Jiu-Jitsu, its instructors and staff from any claims arising from my (or my minor's) participation.</p>
+        <p>I confirm I am physically able to participate and will disclose any relevant medical conditions.</p>
+      </div>
+      <div class="mt-4 border-t border-slate/15 pt-3 grid grid-cols-2 gap-2 text-[10px]">
+        <div><div class="text-slate">Signed by</div><div class="font-semibold">${w.who}</div></div>
+        <div><div class="text-slate">Date</div><div class="font-semibold">${w.date}</div></div>
+      </div>
+      <div class="mt-2 flex items-center justify-between"><span style="font-family:'Segoe Script','Brush Script MT',cursive" class="text-lg text-navy">${w.who.split(' (')[0]}</span><span class="inline-block border-2 border-good text-good font-extrabold text-[10px] px-2 py-0.5 rounded -rotate-6">SIGNED</span></div>
+      <div class="text-[9px] text-slate/60 mt-3">e-signed · IP 73.42.x.x · ${w.date} · v1.2</div>
+    </div>
+    <button data-act="dlwaiver" class="pressable w-full bg-navy text-white rounded-xl py-3 text-sm font-bold mt-1">Download PDF</button>
+  </div>`;
+}
+function scrFamily(){ const fam=famList(); const hasB=!!(fam[0]&&fam[0].bound);
+  // Real bound mode: unreachable from More (entry is hidden), but guard anyway —
+  // the fake family must never render next to a real member.
+  if(realBound()) return topbar('Family')+`<div class="body px-5 pb-4 fade">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="text-sm font-bold text-navy">This phone is linked to you</div>
+      <div class="text-[12px] text-slate mt-1.5 leading-relaxed">Family profiles are coming. When they land you’ll manage your kids’ training from here — until then, ask at the front desk.</div>
+    </div>
+  </div>`;
+  return topbar('Family')+`<div class="body px-5 pb-4 fade">
+    <div class="text-[12px] text-slate mb-2">Tap a profile to manage and book for them.</div>
+    ${fam.map(p=>`<button data-switch="${p.id}" class="pressable w-full flex items-center gap-3 rounded-xl border ${p.id===S.active?'border-navy':'border-slate/15'} p-3 mb-2 text-left">
+      <span class="w-10 h-10 rounded-full bg-mist grid place-items-center font-bold text-navy">${p.first[0]}</span>
+      <span class="flex-1"><span class="block text-sm font-semibold">${p.first}${p.bound?' (you)':(p.id==='carlos'&&!hasB?' (you)':'')}</span><span class="text-[11px] text-slate flex items-center gap-1">${beltGraphic(p.belt,p.bcolor,p.str)} ${p.belt} · ${p.program}${p.bound?' · ☁ linked':''}</span></span>
+      ${p.id===S.active?'<span class="text-[11px] text-navy font-bold">Active</span>':'<span class="text-slate">›</span>'}</button>`).join('')}
+    <button data-act="addchild" class="pressable w-full text-center text-crimson text-sm font-semibold py-3 rounded-xl border border-dashed border-crimson/30 mt-1">＋ Add a child</button>
+  </div>`;
+}
+function scrProfile(){ const p=prof();
+  // Real bound mode: only what the cloud actually knows about this member — never
+  // the demo's fake contact details or waivers e-signed by "Carlos Mendez".
+  if(realBound()) return topbar('Profile & waivers')+`<div class="body px-5 pb-4 fade text-[13px]">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="font-bold text-sm mb-2">${esc(p.name)}</div>
+      ${[['Program',p.program],['Belt',p.belt+' · '+p.str+' stripe'+(p.str!==1?'s':'')],['Member since',p.since]].map(([k,v])=>`<div class="flex justify-between py-1.5 border-t border-slate/10 first:border-0"><span class="text-slate">${k}</span><span class="font-medium text-right">${esc(v)}</span></div>`).join('')}
+    </div>
+    <div class="mt-3">${notYet('Contact details and signed waivers live at the front desk for now — ask there to update your info or see your forms.')}</div>
+  </div>`;
+  return topbar('Profile & waivers')+`<div class="body px-5 pb-4 fade text-[13px]">
+    <div class="rounded-2xl border border-slate/15 p-4">
+      <div class="font-bold text-sm mb-2">${p.name}</div>
+      ${[['Email','carlos.mendez@email.com'],['Phone','(626) 555-0142'],['Emergency','Ana Mendez · (626) 555-0143'],['Medical','None on file']].map(([k,v])=>`<div class="flex justify-between py-1.5 border-t border-slate/10 first:border-0"><span class="text-slate">${k}</span><span class="font-medium text-right">${v}</span></div>`).join('')}
+    </div>
+    <div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="font-bold text-sm mb-1">Signed waivers</div>
+      ${WAIVERS.map(w=>`<button data-waiver="${w.key}" class="pressable w-full flex justify-between items-center py-2 border-t border-slate/10 first:border-0 text-left"><span><span class="block text-[13px]">${w.title}</span><span class="text-good text-[11px]">✓ signed ${w.date}</span></span><span class="text-[12px] text-navy font-semibold shrink-0 ml-2">View ›</span></button>`).join('')}
+    </div>
+  </div>`;
+}
+function scrNotifs(){ const N=S.notif; const row=(k,l,sub)=>`<div class="flex items-center justify-between py-2.5 border-t border-slate/10 first:border-0"><div><div class="text-[13px] font-semibold">${l}</div>${sub?`<div class="text-[11px] text-slate">${sub}</div>`:''}</div><button data-notif="${k}" class="toggle ${N[k]?'on':'off'}"><i></i></button></div>`;
+  return topbar('Notifications')+`<div class="body px-5 pb-4 fade">
+    ${realBound()?`<div class="mb-3">${notYet('Phone alerts aren’t switched on for your gym yet. Your choices here are saved and will kick in the moment they are.')}</div>`:''}
+    <div class="rounded-2xl border border-slate/15 p-4">
+      ${row('rem','Class reminders','before classes you’ve booked')}
+      ${row('wait','Waitlist openings','when a spot frees up')}
+      ${row('belt','Belt & promotion','stripes and rank updates')}
+      ${row('bill','Billing alerts','failed payments, renewals')}
+      ${row('ann','Announcements','gym news & messages')}
+      ${row('quiet','Quiet hours','mute 9pm–7am')}
+    </div>
+  </div>`;
+}
+function scrAnnounce(d){ const list=annList();
+  if(d&&d.id){ const a=list.find(x=>x.id===d.id); if(a){ S.read[a.id]=true; save();
+    return topbar(a.title)+`<div class="body px-5 pb-4 fade"><div class="text-[11px] text-slate mb-2">${a.from} · ${a.time}</div><div class="text-[14px] leading-relaxed">${esc(a.body)}</div></div>`; } }
+  return topbar('Announcements')+`<div class="body px-5 pb-4 fade">
+    ${list.length?list.map(a=>`<button data-ann="${a.id}" class="pressable w-full text-left rounded-2xl border ${S.read[a.id]?'border-slate/15':'border-navy/30 bg-navy/5'} p-3 mb-2 flex gap-2"><span>${a.ic}</span><div class="flex-1"><div class="text-[13px] font-semibold">${esc(a.title)}</div><div class="text-[11px] text-slate">${a.from} · ${a.time}</div></div>${S.read[a.id]?'':'<span class="w-2 h-2 rounded-full bg-crimson mt-1.5"></span>'}</button>`).join('')
+      :`<div class="text-center text-slate text-[13px] py-10 leading-relaxed">Nothing right now.<br>News from the gym will show up here.</div>`}
+  </div>`;
+}
+
+// ---------- login ----------
+// Staging sign-in: plain words, one code, one escape hatch. No fake SMS step — the owner
+// is looking at his own preview build, not pretending to be a member receiving a text.
+let STAGE={err:null,val:''};
+function scrStageLogin(){
+  return `${statusbar()}<div class="body px-6 pt-12 pb-8 fade text-center">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl mx-auto">CP</div>
+    <div class="mt-4 font-bold text-navy text-lg">Welcome to Cia Paulista</div>
+    <div class="text-[13px] text-slate mt-1.5 leading-relaxed">This is the preview copy of the member app. Real members sign in with the invite from the gym — here you just need the preview code.</div>
+    <label class="block mt-6 text-left"><span class="text-[12px] text-slate font-semibold">Preview code</span>
+      <!-- text-[16px]: anything smaller makes iOS Safari zoom the page on focus. -->
+      <input id="stagecode" class="w-full mt-1.5 rounded-xl border border-slate/30 px-4 py-3 text-[16px] text-center tracking-[.35em]" placeholder="${STAGE_CODE}" value="${esc(STAGE.val)}" inputmode="numeric" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go"/></label>
+    ${STAGE.err?`<div id="stageerr" class="mt-2 text-[12px] text-[#FF7B85] leading-relaxed text-left">${esc(STAGE.err)}</div>`:''}
+    <button data-act="stagein" class="pressable w-full mt-4 bg-navy text-white rounded-xl py-3 text-sm font-bold">Open the app</button>
+    <div class="text-[11px] text-slate/50 my-3">or</div>
+    <button data-act="stagedemo" class="pressable w-full border border-slate/25 rounded-xl py-3 text-sm font-semibold">Use a demo member</button>
+    <div class="text-[11px] text-slate/70 mt-5 leading-relaxed">The preview code is <b class="text-navy">${STAGE_CODE}</b>.<br>Everything in here is made-up practice data.</div>
+  </div>`;
+}
+// One way in, used by both the code and the "Use a demo member" button: the existing demo
+// profile path (Carlos), so every screen behaves exactly as it does in the demo.
+function enterStagingApp(){
+  S.loggedIn=true; S.mode='member'; S.active='carlos'; S.tab='home'; S.stack=[]; S.loginStep=1;
+  STAGE={err:null,val:''};
+  try{ localStorage.setItem('cp_stage_member','1'); }catch(e){}
+  save(); render(); toast('Welcome, <b>'+esc(prof().first)+'</b> 🥋');
+}
+function doStageIn(){
+  const inp=document.getElementById('stagecode'); if(inp) STAGE.val=inp.value;
+  const code=String(STAGE.val==null?'':STAGE.val).replace(/\D/g,'');
+  if(code===STAGE_CODE){ enterStagingApp(); return; }
+  STAGE.err = code
+    ? 'That code isn’t right. The preview code is '+STAGE_CODE+' — or tap “Use a demo member”.'
+    : 'Type the preview code '+STAGE_CODE+' — or tap “Use a demo member”.';
+  render();
+  try{ const i=document.getElementById('stagecode'); if(i) i.focus(); }catch(e){}
+}
+function scrLogin(){
+  if(stagingMode()) return scrStageLogin();
+  if(S.loginStep===1) return `${statusbar()}<div class="body px-6 pt-12 text-center fade">
+    <div class="w-14 h-14 rounded-2xl bg-crimson text-white grid place-items-center font-black text-2xl mx-auto">CP</div>
+    <div class="mt-4 font-bold text-navy text-lg">Welcome to Cia Paulista</div>
+    <div class="text-[13px] text-slate mt-1">Enter your phone — we’ll text you a secure link. No password.</div>
+    <input class="mt-6 w-full rounded-xl border border-slate/30 px-4 py-3 text-center" value="(626) 555-0142"/>
+    <button data-act="sendlink" class="pressable w-full mt-3 bg-navy text-white rounded-xl py-3 text-sm font-bold">Send my link</button>
+    <div class="text-[11px] text-slate/60 mt-4">Face ID unlock after your first sign-in</div></div>`;
+  return `${statusbar()}<div class="body px-6 pt-12 text-center fade">
+    <div class="text-3xl">📲</div><div class="mt-3 font-bold text-navy">Enter the 6-digit code</div>
+    <div class="text-[12px] text-slate mt-1">Sent to (626) 555-0142</div>
+    <div class="flex justify-center gap-2 mt-5">${'482193'.split('').map(d=>`<div class="w-9 h-11 rounded-lg border border-navy/30 grid place-items-center font-bold text-lg">${d}</div>`).join('')}</div>
+    <button data-act="verify" class="pressable w-full mt-5 bg-navy text-white rounded-xl py-3 text-sm font-bold">Continue</button>
+    <button data-act="back1" class="pressable text-[12px] text-slate mt-3">‹ Change number</button></div>`;
+}
+
+// ---------- teaching mode screen ----------
+function scrTeaching(){ const due=tDue();
+  return `<div class="px-5 pt-1 pb-3 flex items-center justify-between">
+      <button data-sheet="profiles" class="pressable flex items-center gap-2"><span class="w-9 h-9 rounded-full bg-crimson text-white grid place-items-center text-sm">🎓</span><span class="text-left leading-tight"><span class="block text-[10px] text-crimson font-bold tracking-wide">TEACHING MODE</span><span class="font-bold text-sm flex items-center gap-1">Prof. Carlos <span class="text-slate text-[10px]">▾</span></span></span></button>
+      <button data-mode="member" class="pressable text-[11px] font-semibold text-navy rounded-full border border-slate/25 px-2.5 py-1">Exit ✕</button>
+    </div>
+    <div class="body px-5 pb-4 fade">
+      <div class="text-[12px] text-slate">Your classes today · Thursday — tap a class to take attendance</div>
+      ${TCLASSES.map(c=>{ const exp=S.texpand===c.id; const pc=tPresentCount(c.id);
+        return `<div class="rounded-2xl border border-slate/15 mt-2 overflow-hidden">
+          <button data-tclass="${c.id}" class="pressable w-full flex items-center justify-between p-4 text-left"><div><div class="font-semibold text-navy">${c.name}</div><div class="text-[11px] text-slate">${c.time} · ${c.prog} · ${c.roster.length} on roster</div></div><div class="text-right flex items-center gap-2"><div><div class="text-lg font-bold text-good leading-none">${pc}</div><div class="text-[10px] text-slate">present</div></div><span class="text-slate">${exp?'▲':'▾'}</span></div></button>
+          ${exp?`<div class="px-3 pb-2 border-t border-slate/10">${c.roster.map(id=>{ const s=tStud(id); const on=tPresent(c.id,id); const r=tReady(s);
+              return `<div class="flex items-center gap-2 py-2 border-b border-slate/5 last:border-0"><button data-tatt="${c.id}|${id}" class="chk pressable ${on?'on':''}">✓</button>${beltGraphic(s.belt,TBELT[s.belt],s.str)}<div class="flex-1 min-w-0"><div class="text-[13px] font-semibold truncate">${s.n}</div><div class="text-[11px] text-slate">${tRank(s.belt,s.str)} · ${s.cur}/${s.req}</div></div>${r?`<button data-tpromote="${id}" class="pressable shrink-0 bg-crimson text-white rounded-full px-2.5 py-1 text-[11px] font-bold">Promote</button>`:''}</div>`;
+            }).join('')}</div>`:''}
+        </div>`; }).join('')}
+      <div class="rounded-2xl bg-navy text-white p-4 mt-3"><div class="flex justify-between items-center"><div class="font-semibold text-sm">🥋 Promotions due</div><div class="text-2xl font-bold">${due.length}</div></div>${due.length?`<div class="text-[11px] opacity-80 mt-1">${due.map(s=>s.n.split(' ')[0]).join(', ')} hit their class target — promote from any roster above.</div>`:`<div class="text-[11px] opacity-80 mt-1">No one is due right now.</div>`}</div>
+      <div class="rounded-xl bg-mist p-3 mt-3 text-[11px] text-slate leading-relaxed">💳 <b class="text-navy">Money &amp; billing aren’t here.</b> Payouts, Stripe, and managing members’ billing live in the <b class="text-navy">Staff Console</b> (web). Your own membership billing is separate — switch back to your member profile for that.</div>
+    </div>`;
+}
+
+// ---------- render ----------
+const SCREENS={home:scrHome,schedule:scrSchedule,checkin:scrCheckin,progress:scrProgress,more:scrMore};
+const SUB={billing:scrBilling,family:scrFamily,profile:scrProfile,notifs:scrNotifs,announcements:scrAnnounce,classdetail:scrClassDetail,bill_card:scrBillCard,bill_pay:scrBillPay,bill_freeze:scrBillFreeze,bill_cancel:scrBillCancel,bill_receipts:scrBillReceipts,bill_receipt:scrBillReceipt,waiver:scrWaiver,install:scrInstall};
+function render(){
+  const app=document.getElementById('app');
+  if(INVITE){ app.innerHTML=scrInvite(); return; }
+  if(LINK){ app.innerHTML=scrLink(); return; }
+  if(gateNeeded()){
+    // "Signed in but no member match yet" (ESI.step==='nomatch') must win over the plain
+    // gate even though gateNeeded() is still true (boundProfile() is still null) — otherwise
+    // a person who just verified their email would be shown "paste your invite link" again,
+    // which reads as if the sign-in never happened.
+    if(ESI.active){ app.innerHTML=scrEmailSignin(); return; }
+    app.innerHTML=scrGate(); return; // real app, unbound -> member sign-in
+  }
+  // Real bound mode is single-person: state persisted from an earlier demo session
+  // (fake Carlos active, teaching mode) must never leak a demo identity into the
+  // real app — snap back to the bound member.
+  if(realBound()&&(S.active!=='__bound__'||S.mode==='teaching')){ S.active='__bound__'; S.mode='member'; save(); }
+  if(!S.loggedIn){
+    // A bound device is already signed in by definition — never show it the demo login.
+    if(boundProfile()){ S.loggedIn=true; S.mode='member'; S.active='__bound__'; save(); }
+    else { app.innerHTML=scrLogin(); return; }
+  }
+  if(S.mode==='teaching'){ app.innerHTML=statusbar()+scrTeaching(); return; }
+  const top=S.stack[S.stack.length-1];
+  let content;
+  if(top){ const fn=SUB[top.screen]; content=statusbar()+ (fn?fn(top.data):scrHome()); }
+  else content=statusbar()+ (SCREENS[S.tab]?SCREENS[S.tab]():scrHome());
+  const tabbar=`<div class="border-t border-slate/10 flex bg-white safe-b">${TABS.map(([id,ic,l])=>`<div id="tab-${id}" class="tab ${(!top&&S.tab===id)?'on':''}" data-go="${id}"><span class="ic">${ic}</span>${l}</div>`).join('')}</div>`;
+  app.innerHTML=content+tabbar;
+  maybeOnboard();
+}
+
+// ---------- onboarding (additive enhancement — never blocks boot) ----------
+let _onbDone=false;
+function maybeOnboard(){
+  // Fire ONLY once the member is inside the main app on Home (post magic-link login),
+  // not on the login screen and not in teaching mode.
+  if(_onbDone) return;
+  if(!S.loggedIn || S.mode==='teaching' || S.tab!=='home' || S.stack.length) return;
+  if(!window.Onboarding) return;
+  _onbDone=true;
+  try{
+    // Real bound mode gets honest copy: no promises of booking / billing / family —
+    // those are demo fictions until their slices ship. Demo keeps the full pitch.
+    const rb=realBound();
+    Onboarding.init({
+      key:'cp_onb_member', accent:'#E11D2A', helpLabel:'How it works',
+      mountHelp:false,
+      title:'Welcome to Cia Paulista',
+      subtitle:'Your gym, in your pocket.',
+      bullets:rb?[
+        'Check in with your QR code',
+        'Track your belt & attendance',
+        'See the weekly class schedule',
+        'Gym announcements in one place'
+      ]:[
+        'Book, cancel & join waitlists',
+        'Check in with your QR code',
+        'Track your belt & attendance',
+        'Manage billing, waivers & family profiles'
+      ],
+      tour:rb?[
+        {sel:'#tab-home',     title:'Home',     body:'Your belt progress and gym announcements at a glance.', place:'top'},
+        {sel:'#tab-schedule', title:'Schedule', body:'Browse the week’s classes — they’re drop-in, just show up and train.', place:'top'},
+        {sel:'#tab-checkin',  title:'Check in', body:'Show your QR code at the front desk — it works offline and refreshes automatically.', place:'top'},
+        {sel:'#tab-progress', title:'Progress', body:'Follow your belt, stripes, attendance, and your journey timeline.', place:'top'}
+      ]:[
+        {sel:'#tab-home',     title:'Home',            body:'Your next class, belt progress, and gym announcements at a glance.', place:'top'},
+        {sel:'#tab-schedule', title:'Schedule',        body:'Browse the week and book, cancel, or join the waitlist for any class.', place:'top'},
+        {sel:'#tab-checkin',  title:'Check in',        body:'Show your QR code at the front desk — it works offline and refreshes automatically.', place:'top'},
+        {sel:'#tab-progress', title:'Progress',        body:'Follow your belt, stripes, attendance, and your journey timeline.', place:'top'},
+        {sel:'[data-sheet="profiles"]', title:'Family profiles', body:'Tap here to switch between your own account and your kids’ — one login, one bill.', place:'bottom'}
+      ]
+    });
+  }catch(e){ /* onboarding must never break the app */ }
+}
+
+// ---------- events ----------
+document.getElementById('app').addEventListener('click', e=>{
+  const el=e.target.closest('[data-go],[data-pop],[data-screen],[data-class],[data-book],[data-receipt],[data-waiver],[data-day],[data-act],[data-switch],[data-notif],[data-ann],[data-sheet],[data-mode],[data-tclass],[data-tatt],[data-tpromote]'); if(!el)return;
+  if(el.dataset.mode){ S.mode=el.dataset.mode; S.stack=[]; if(S.mode==='teaching'){ S.active='carlos'; S.texpand=null; } else { S.tab='home'; } save(); render(); toast(S.mode==='teaching'?'🎓 Teaching mode':'Back to your training'); return; }
+  if(el.dataset.tclass){ S.texpand = S.texpand===el.dataset.tclass?null:el.dataset.tclass; save(); render(); return; }
+  if(el.dataset.tatt){ const [c,id]=el.dataset.tatt.split('|'); S.tatt=S.tatt||{}; S.tatt[c]=S.tatt[c]||{}; if(S.tatt[c][id]) delete S.tatt[c][id]; else S.tatt[c][id]=1; save(); render(); return; }
+  if(el.dataset.tpromote){ const s=tStud(el.dataset.tpromote); const nx=tNext(s); confirmDialog('Promote '+s.n+' to '+tRank(nx.belt,nx.str)+'?','Promote',function(){ s.belt=nx.belt; s.str=nx.str; s.cur=0; save(); render(); toast('🥋 Promoted '+s.n.split(' ')[0]+' to '+tRank(nx.belt,nx.str)); }); return; }
+  if(el.hasAttribute('data-pop')){ pop(); return; }
+  if(el.dataset.go){ go(el.dataset.go); return; }
+  if(el.dataset.screen){ push(el.dataset.screen); return; }
+  if(el.dataset.book){ const id=el.dataset.book; const c=CLASSES.find(x=>x.id===id); const st=classState(c);
+    if(st==='open'){ S.booked[id]='booked'; save(); render(); toast('Booked ✓ · '+c.name); }
+    else if(st==='full'){ S.booked[id]='waitlist'; save(); render(); toast('Added to the waitlist'); }
+    else { confirmDialog('Are you sure you want to unbook '+c.name+'?','Yes, unbook',function(){ delete S.booked[id]; save(); render(); toast('Booking cancelled'); }); }
+    return; }
+  if(el.dataset.receipt){ push('bill_receipt',{month:el.dataset.receipt}); return; }
+  if(el.dataset.waiver){ push('waiver',{key:el.dataset.waiver}); return; }
+  if(el.dataset.ann){ push('announcements',{id:el.dataset.ann}); return; }
+  if(el.dataset.class){ push('classdetail',{id:el.dataset.class}); return; }
+  if(el.dataset.day!=null){ S.selDay=+el.dataset.day; save(); render(); return; }
+  if(el.dataset.switch){ S.active=el.dataset.switch; S.tab='home'; S.stack=[]; save(); render(); toast('Now managing <b>'+esc(prof().first)+'</b>'); return; }
+  if(el.dataset.notif){ S.notif[el.dataset.notif]=!S.notif[el.dataset.notif]; save(); render(); return; }
+  if(el.dataset.sheet==='profiles'){ openSwitcher(); return; }
+  const act=el.dataset.act;
+  if(act==='stagein'){ doStageIn(); return; }
+  if(act==='stagedemo'){ enterStagingApp(); return; }
+  if(act==='sendlink'){ S.loginStep=2; save(); render(); return; }
+  if(act==='back1'){ S.loginStep=1; save(); render(); return; }
+  if(act==='verify'){ S.loggedIn=true; save(); render(); return; }
+  if(act==='logout'){ S.loggedIn=false; S.loginStep=1; save(); render(); return; }
+  if(act==='linkdone'){ LINK=null; S.loggedIn=true; S.mode='member'; S.active='__bound__'; S.tab='home'; S.stack=[]; save(); render(); toast('Welcome, <b>'+esc(prof().first)+'</b> 🥋'); return; }
+  if(act==='linkretry'){ startBind(LINK&&LINK.token); return; }
+  // "Continue to the app" after a failed bind: demo home when demo is allowed;
+  // on a real (configured) device render() lands on the sign-in gate instead —
+  // prefill it with the failed token so a retry is one tap away.
+  if(act==='linkskip'){ cleanTokenUrl(); if(LINK&&LINK.token&&!demoMode()) GATE.val=LINK.token; LINK=null; S.loggedIn=true; S.mode='member'; S.tab='home'; S.stack=[]; save(); render(); return; }
+  if(act==='gatebind'){ doGateBind(); return; }
+  if(act==='invitecontinue'){ ESI={active:true,step:'email',email:(INVITE&&INVITE.email)||'',code:'',busy:false,err:null}; INVITE=null; render(); return; }
+  if(act==='inviteretry'){ startInviteAccept(INVITE&&INVITE.token); return; }
+  if(act==='inviteskip'){ cleanInviteUrl(); INVITE=null; render(); return; }
+  if(act==='esistart'){ ESI={active:true,step:'email',email:'',code:'',busy:false,err:null}; render(); return; }
+  if(act==='esiback'){ resetEsi(); render(); return; }
+  if(act==='esisend'){ doEsiSend(false); return; }
+  if(act==='esiresend'){ doEsiSend(true); return; }
+  if(act==='esiverify'){ doEsiVerify(); return; }
+  if(act==='esisignout'){ try{ const p=CP.data.auth.signOut(); if(p&&p.catch)p.catch(()=>{}); }catch(e){} resetEsi(); render(); return; }
+  if(act==='install'){
+    if(BIP){ const p=BIP; BIP=null;
+      try{ p.prompt(); if(p.userChoice&&p.userChoice.then) p.userChoice.then(ch=>{ if(ch&&ch.outcome==='accepted'){ try{ localStorage.setItem('cp_install_done','1'); }catch(e){} toast('Installing ✓ — check your home screen'); render(); } },()=>{}); }
+      catch(e){ push('install'); }
+      return; }
+    push('install'); return; }
+  if(act==='installdismiss'){ try{ localStorage.setItem('cp_install_hide','1'); }catch(e){} render(); return; }
+  if(act==='resetdemo'){ confirmDialog('Reset the demo to its starting state?','Reset',function(){ S=fresh(); save(); render(); toast('Demo reset ↺'); }); return; }
+  if(act==='unlink'){ confirmDialog('Unlink this phone? You’ll need your invite link from the gym to set it up again.','Unlink',function(){
+      try{ localStorage.removeItem('cp_member_token'); localStorage.removeItem('cp_member_rec'); localStorage.removeItem('cp_member_att'); }catch(e){}
+      S=fresh(); save(); render(); }); return; }
+  if(act==='tour'){ if(window.Onboarding) Onboarding.showWelcome(); return; }
+  if(act==='book'){ const id=el.dataset.id; S.booked[id]='booked'; save(); pop(); toast('Booked ✓ · reminder set'); return; }
+  if(act==='waitlist'){ const id=el.dataset.id; S.booked[id]='waitlist'; save(); pop(); toast('Added to the waitlist'); return; }
+  if(act==='unbook'){ const id=el.dataset.id; const c=CLASSES.find(x=>x.id===id); confirmDialog('Are you sure you want to unbook '+(c?c.name:'this class')+'?','Yes, unbook',function(){ delete S.booked[id]; save(); pop(); toast('Booking cancelled'); }); return; }
+  if(act==='scan'){ successOverlay(); return; }
+  if(act==='wallet'){ toast('Added a check-in pass to Apple Wallet'); return; }
+  if(act==='savecard'){ S.cardUpdated=true; save(); pop(); toast('Payment card updated ✓'); return; }
+  if(act==='paynow'){ S.paid=true; save(); pop(); toast('Payment received ✓ — thank you!'); return; }
+  if(act==='freezeopt'){ S.freezeOpt=el.dataset.opt; if(S.freezeOpt==='custom'){ S.freezeN=S.freezeN||1; S.freezeUnit=S.freezeUnit||'months'; } save(); render(); return; }
+  if(act==='freezeunit'){ S.freezeUnit=el.dataset.unit; const mx=S.freezeUnit==='days'?90:S.freezeUnit==='weeks'?12:3; S.freezeN=Math.min(S.freezeN||1,mx); save(); render(); return; }
+  if(act==='freezeinc'){ const u=S.freezeUnit||'months'; const mx=u==='days'?90:u==='weeks'?12:3; S.freezeN=Math.min((S.freezeN||1)+1,mx); save(); render(); return; }
+  if(act==='freezedec'){ S.freezeN=Math.max((S.freezeN||1)-1,1); save(); render(); return; }
+  if(act==='freezeconfirm'){ const o=S.freezeOpt||'1w'; const lbl=o==='custom'?((S.freezeN||1)+' '+(S.freezeUnit||'months')):({'1w':'1 week','2w':'2 weeks','3w':'3 weeks'}[o]); pop(); toast('Membership frozen for '+lbl+' · resumes automatically'); return; }
+  if(act==='freezeinstead'){ S.stack.pop(); push('bill_freeze'); return; }
+  if(act==='cancelconfirm'){ pop(); toast('Cancellation requested — the front desk will confirm'); return; }
+  if(act==='dlreceipt'){ toast('Receipt downloaded (PDF)'); return; }
+  if(act==='addchild'){ toast('Add-a-child flow (simulated)'); return; }
+  if(act==='dlwaiver'){ toast('Document downloaded (PDF)'); return; }
+});
+function closeSwitcher(){ const e=document.getElementById('swov'); if(e) e.remove(); }
+function openSwitcher(){ closeSwitcher(); const app=document.getElementById('app');
+  const ov=document.createElement('div'); ov.id='swov'; ov.className='absolute inset-0 z-40';
+  ov.innerHTML=`<div class="absolute left-4 top-[48px] w-60 bg-white rounded-2xl shadow-xl border border-slate/15 p-1.5 fade">
+    <div class="text-[10px] text-slate uppercase tracking-wide px-2 py-1">Viewing as</div>
+    ${famList().map(p=>`<button data-pswitch="${p.id}" class="pressable w-full flex items-center gap-2 rounded-xl ${(S.mode!=='teaching'&&p.id===S.active)?'bg-mist':''} px-2 py-2 text-left"><span class="w-8 h-8 rounded-full bg-navy/10 grid place-items-center font-bold text-navy text-xs">${p.first[0]}</span><span class="flex-1"><span class="block text-[13px] font-semibold">${p.first}${p.bound?' (you)':(p.id==='carlos'&&!boundProfile()?' (you)':'')}</span><span class="text-[10px] text-slate">${p.bound?'☁ Linked · '+p.belt:(p.kind==='kid'?'Child · '+p.belt:'Member · '+p.belt)}</span></span>${(S.mode!=='teaching'&&p.id===S.active)?'<span class="text-navy text-sm">●</span>':''}</button>`).join('')}
+    <div class="border-t border-slate/10 mt-1 pt-1">
+      <div class="text-[10px] text-slate uppercase tracking-wide px-2 py-1">Staff</div>
+      ${S.mode==='teaching'
+        ? `<button data-mode="member" class="pressable w-full flex items-center gap-2 rounded-xl px-2 py-2 text-left"><span class="w-8 h-8 rounded-full bg-mist grid place-items-center">↩</span><span class="flex-1 text-[13px] font-semibold">Exit teaching → my training</span></button>`
+        : `<button data-mode="teaching" class="pressable w-full flex items-center gap-2 rounded-xl px-2 py-2 text-left"><span class="w-8 h-8 rounded-full bg-crimson/15 grid place-items-center">🎓</span><span class="flex-1"><span class="block text-[13px] font-semibold">Teaching mode</span><span class="text-[10px] text-slate">roster · attendance · promotions</span></span><span class="text-crimson text-sm">›</span></button>`}
+    </div>
+  </div>`;
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-pswitch],[data-mode]'); if(b){
+      if(b.dataset.mode){ S.mode=b.dataset.mode; S.stack=[]; if(S.mode==='teaching'){ S.active='carlos'; S.texpand=null; } else { S.tab='home'; } closeSwitcher(); save(); render(); toast(S.mode==='teaching'?'🎓 Teaching mode':'Back to your training'); return; }
+      S.active=b.dataset.pswitch; S.mode='member'; S.tab='home'; S.stack=[]; closeSwitcher(); save(); render(); toast('Now viewing <b>'+prof().first+'</b>'); return; }
+    closeSwitcher(); });
+  app.appendChild(ov);
+}
+function closeConfirm(){ const e=document.getElementById('cfov'); if(e) e.remove(); }
+function confirmDialog(msg, yesLabel, onYes){ closeConfirm(); const app=document.getElementById('app');
+  const ov=document.createElement('div'); ov.id='cfov'; ov.className='absolute inset-0 bg-ink/40 z-50 grid place-items-center p-6';
+  ov.innerHTML=`<div class="bg-white rounded-2xl p-5 w-full max-w-[300px] text-center fade"><div class="text-sm font-semibold text-navy">${msg}</div><div class="flex gap-2 mt-4"><button data-cf="no" class="pressable flex-1 rounded-xl border border-slate/30 py-2.5 text-sm font-semibold">No</button><button data-cf="yes" class="pressable flex-1 rounded-xl bg-crimson text-white py-2.5 text-sm font-bold">${yesLabel||'Yes'}</button></div></div>`;
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-cf]'); if(b){ const yes=b.dataset.cf==='yes'; closeConfirm(); if(yes&&onYes) onYes(); return; } if(e.target===ov) closeConfirm(); });
+  app.appendChild(ov);
+}
+function successOverlay(){ const p=prof(); S.attended[p.id]=(S.attended[p.id]||0)+1; save();
+  const app=document.getElementById('app'); const ov=document.createElement('div'); ov.className='absolute inset-0 bg-white z-40 grid place-items-center text-center p-8 fade';
+  ov.innerHTML=`<div><div class="w-24 h-24 rounded-full bg-good text-white grid place-items-center text-5xl mx-auto mb-4">✓</div><div class="text-2xl font-extrabold text-navy">Checked in, ${p.first}! 🥋</div><div class="text-slate mt-2 text-sm">See you on the mat</div><div class="text-[12px] text-good mt-3">+1 toward your next stripe (${S.attended[p.id]}/${p.req})</div><div class="text-[11px] text-slate/50 mt-6">Tap to continue</div></div>`;
+  ov.addEventListener('click',()=>{ ov.remove(); render(); }); app.appendChild(ov); setTimeout(()=>{ if(ov.parentNode){ov.remove(); render();} },3000);
+}
+// Cloud status changes patch the tiny ☁ dot in place (no full re-render, overlays survive).
+try{ if(window.CP&&CP.data&&CP.data.onStatus) CP.data.onStatus(function(){ try{
+  const el=document.getElementById('clouddot'); if(!el) return;
+  const p=prof(); if(!p.bound){ el.remove(); return; }
+  const t=document.createElement('template'); t.innerHTML=cloudDot(p).trim();
+  if(t.content&&t.content.firstChild) el.replaceWith(t.content.firstChild);
+}catch(e){} }); }catch(e){}
+// DEMO chip — mounted only in demo mode (?demo=1 or no cloud config) so the demo
+// is never mistaken for the real app. The real app never shows it.
+try{ if(demoMode()){ const c=document.createElement('div'); c.className='demochip'; c.textContent='DEMO'; document.querySelector('.phone').appendChild(c); } }catch(e){}
+// Enter submits the member sign-in gate (same path as the button) — real gate and staging.
+document.getElementById('app').addEventListener('keydown',e=>{ if(e.key!=='Enter'||!e.target) return;
+  if(e.target.id==='gatetok'){ e.preventDefault(); doGateBind(); return; }
+  if(e.target.id==='stagecode'){ e.preventDefault(); doStageIn(); return; }
+  if(e.target.id==='esiemail'){ e.preventDefault(); doEsiSend(false); return; }
+  if(e.target.id==='esicode'){ e.preventDefault(); doEsiVerify(); } });
+// PWA install: capture Chrome's deferred prompt for the in-app "Install" affordances.
+window.addEventListener('beforeinstallprompt',e=>{ try{ e.preventDefault(); }catch(_e){} BIP=e; });
+window.addEventListener('appinstalled',()=>{ BIP=null; try{ localStorage.setItem('cp_install_done','1'); }catch(e){} try{ render(); }catch(e){} });
+// Service worker (offline + installable). LIVE only, https only — never file://, never
+// jsdom, and never in staging: the staging build runs inside the preview shell's iframe,
+// where a cached SW would serve stale staging files back over the live app.
+try{ var _live=!!(window.CP&&window.CP.env&&window.CP.env.isLive);
+  if(_live&&'serviceWorker' in navigator&&location.protocol==='https:'&&!/jsdom/i.test(navigator.userAgent||'')) navigator.serviceWorker.register('sw.js'); }catch(e){}
+// Staging reset: the preview shell's "⟲ Reset login" button posts this in, so the whole
+// member journey (sign-in → app) can be replayed from scratch. Staging only — a live
+// member's phone must never have its link wiped by a stray postMessage.
+window.addEventListener('message',function(e){
+  try{
+    var d=e&&e.data; if(!d||d.type!=='cp-staging-reset') return;
+    if(!(window.CP&&window.CP.env&&window.CP.env.isStaging)) return;
+    ['cp_member_token','cp_member_rec','cp_member_att','cp_stage_member','cp_memberapp_v3','cp_onb_member','cp_install_hide','cp_install_done']
+      .forEach(function(k){ try{ localStorage.removeItem(k); }catch(_e){} });
+    try{ location.reload(); }catch(_e){}
+  }catch(_e){}
+});
+// Claim link: ?m=<token> runs the linking moment before anything else shows. Byte-for-byte
+// unchanged for legacy (un-migrated) members — this path never touches invites at all.
+try{ const _tok=new URLSearchParams(location.search).get('m'); if(_tok) startBind(_tok); }catch(e){}
+// Invite link: ?invite=<token> runs the invite-acceptance moment before anything else shows.
+// Mirrors the ?m= handler above (always attempts; startInviteAccept itself treats no cloud /
+// no CP.data.invites as a calm connectivity-style failure rather than silently ignoring it).
+try{ const _inv=new URLSearchParams(location.search).get('invite'); if(_inv) startInviteAccept(_inv); }catch(e){}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="member-signup.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='live'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the chat composer) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+  /* Page gutter that always clears the notch, home indicator and landscape ears on iOS.
+     The app renders RAW (no device frame), so the page itself owns the safe area. */
+  .safe-pad {
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+</style>
+<title>Cia Paulista — Join</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<script src="env.js"></script>
+<!-- Shared live data layer. LIVE submits the applicant as a real join REQUEST through
+     CP.data.invites.requestJoin — the anonymous (signed-out, RLS-guarded) path the invite
+     Edge Function exposes for this exact purpose (D8: self-signup = request -> owner/admin
+     approves -> invite sent; see docs/superpowers/specs/2026-07-22-auth-system-design.md
+     "Frozen Wave-3 contract"). Fail-soft: without cloud config / offline it reports that
+     honestly instead of pretending the request went through. -->
+<script src="vendor/supabase.js"></script>
+<script src="data.js"></script>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script>Babel.registerPreset("classic",{presets:[[Babel.availablePresets["react"],{runtime:"classic"}]]});</script>
+<script src="vendor/tailwind.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    // Tatame dark theme — the SAME token remap every other app uses (public-funnel.html is
+    // the twin). `navy` is repurposed as the LIGHT heading/text token; `slate` becomes the
+    // muted light-grey; `mist` becomes a dark inner surface. Solid navy/white BACKGROUNDS the
+    // markup still asks for are re-tinted by the .tatame override layer below. Net effect: this
+    // page's markup is untouched but the whole palette flips onto the app's dark theme.
+    navy:'#F3F3F5', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20'
+  }}}}
+</script>
+<style>
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* Surface shadow for the signup card. NOT a device bezel — no border, no notch;
+     on a phone the card simply fills the width. Dark theme: a hairline light ring + a deep
+     black shadow, so the card reads as a raised dark surface like the app's other cards. */
+  .app-card{box-shadow:0 0 0 1px rgba(255,255,255,.06), 0 30px 60px -20px rgba(0,0,0,.7)}
+  input:focus,button:focus{outline:none}
+  .field:focus{border-color:#E11D2A;box-shadow:0 0 0 3px rgba(225,29,42,.20)}
+
+  /* ===== Tatame — the app's dark performance theme. Same scoped-override layer every other
+     app carries (public-funnel.html is the twin: a light-origin page flipped to dark this
+     exact way). The token remap above does most of the work; these rules re-tint the solid
+     white/navy BACKGROUNDS the markup asks for so the card, header and inputs land on the
+     dark palette. Visual reskin only — no markup/behaviour change — and because it's on
+     <body> it applies to BOTH the live join page and the staging wizard. ===== */
+  .tatame{background:#0B0B0D;color:#F3F3F5}
+  .tatame .bg-white{background:#151517}                                    /* the signup card + inner white surfaces */
+  .tatame .bg-navy{background:#2A2A2F}                                     /* the CP brand header band */
+  .tatame input,.tatame select,.tatame textarea{background:#1C1C20;color:#F3F3F5;border-color:rgba(255,255,255,.14)}
+  .tatame input::placeholder,.tatame textarea::placeholder{color:#6B6B72}
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+</style>
+</head>
+<body class="tatame min-h-screen flex flex-col safe-pad" style="background:linear-gradient(135deg,#0B0B0D,#151517)">
+<!-- #root must be a full-height flex column: the card inside uses `my-auto`, which only
+     centres when its PARENT is a flex container with spare height. Without these classes
+     #root is a plain auto-height block and the card renders top-aligned. `my-auto` (not
+     justify-center) is deliberate — when free space is negative, auto margins resolve to
+     zero, so a short/landscape viewport scrolls from the top instead of clipping. -->
+<div id="root" class="flex-1 w-full flex flex-col min-h-0"></div>
+
+<script type="text/babel" data-presets="classic">
+const {useState, useEffect} = React;
+
+// Invite prefill: the assistant/console can send a personalized link (?phone=… / ?email=…) so the
+// applicant never retypes what the gym already collected.
+const QS = new URLSearchParams(location.search);
+const PRE_PHONE = (QS.get('phone')||'').trim();
+const PRE_EMAIL = (QS.get('email')||'').trim();
+
+const PLANS = [
+  {id:'trial', name:'Free Trial Week', price:0, unit:'', tag:'Start here', tagColor:'bg-gold text-navy', desc:'7 days unlimited — Gi, No-Gi & Open Mat'},
+  {id:'adult', name:'Adult Unlimited', price:165, unit:'/mo', tag:'Most popular', tagColor:'bg-crimson text-white', desc:'Unlimited Gi + No-Gi + Open Mat'},
+  {id:'pack', name:'10-Class Pack', price:200, unit:'', tag:'', tagColor:'', desc:'Train on your own schedule · 90-day validity'},
+  {id:'kids', name:'Kids Unlimited', price:130, unit:'/mo', tag:'', tagColor:'', desc:'Ages 5–12 · all kids classes'},
+];
+const money = v => v===0 ? 'Free' : '$'+v.toLocaleString();
+const STEP_LABELS = ['Phone','Code','You','Plan','Waiver','Payment','Done'];
+
+// ---- Payment environment (see env.js; contract in docs/.../2026-07-21-staging-live-split.md) ----
+// LIVE is the ONLY mode where a real human could be handing over real money, so it is the only
+// mode that must never render a fake card/bank form. Everything else (staging preview, jsdom)
+// gets the demo form so the flow can be walked end to end.
+const IS_LIVE = (()=>{ try { return !!(window.CP && window.CP.env && window.CP.env.isLive); } catch(e){ return false; } })();
+
+// ---- SMS environment (staging/demo wizard only — see LiveFlow above for real traffic) ----
+// There is no SMS provider wired (Twilio is an unbuilt M1 item), so "we texted you a
+// 6-digit code" is a walkable simulation, never real. LIVE never reaches this Code step —
+// or any of the wizard below — at all: App() returns <LiveFlow/> first, whose honest
+// name+email(+phone) -> invites.requestJoin flow carries zero SMS copy anywhere.
+const STEP_CODE = 1, STEP_DONE = 6;
+const SKIPPED = [];               // demo/staging only now — every step renders, including Code
+const VISIBLE_STEPS = STEP_LABELS.slice(0, STEP_DONE).map((_,i)=>i).filter(i=>SKIPPED.indexOf(i)<0);
+
+// ---- Responsive layout tokens (real CSS breakpoints — there is no device toggle) ----
+// Phone (<768px, covers ≤430 hand-held): everything stacks in one column.
+// Tablet portrait (md: 768px, ~768–834) / landscape (~1024–1194) / desktop: two columns.
+const ROW2      = 'md:grid md:grid-cols-2 md:gap-x-4';   // paired form fields
+const PLAN_GRID = 'grid grid-cols-1 md:grid-cols-2 gap-3'; // plan chooser
+const WAIVER_H  = 'h-40 md:h-56';                          // waiver scroll box grows with room
+const GUTTER    = 'px-5 md:px-8';                          // card padding
+
+function Field({label, ...p}){
+  return (
+    <label className="block mb-3">
+      <span className="block text-sm text-slate mb-1">{label}</span>
+      <input {...p} className="field w-full rounded-xl border border-slate/30 px-4 py-3 text-[16px] transition"/>
+    </label>
+  );
+}
+function Primary({children, ...p}){
+  return <button {...p} className="w-full bg-crimson text-white font-semibold rounded-xl py-3.5 text-[16px] disabled:opacity-40 disabled:cursor-not-allowed active:scale-[.99] transition">{children}</button>;
+}
+
+// ---- LIVE signup flow (staging-parity: You -> Plan -> Waiver -> Billing -> Done) ----
+// This is the WHOLE live page. It matches the staging wizard's real, honest steps — collect
+// contact + plan + waiver signature — then submits ONE request through the same invites
+// machinery member-app.html's invite acceptance answers to, and says exactly what happens next.
+//
+// No SMS/6-digit code step: members in this system don't authenticate with codes — they get in
+// through a device-bound claim LINK (member_by_token capability). The staging "Code" step was a
+// fake-SMS simulation and has no honest real-mode equivalent, so live omits it entirely.
+//
+// Routing (Pat's decision 2026-07-23): a FREE/trial plan (price 0) is a LEAD; any PAID plan
+// (price > 0) is a MEMBER. Both submit through the anti-enumeration `request_join` endpoint
+// (supabase/functions/invite doRequestJoin) carrying `plan`, the typed waiver signature, and a
+// `desired_route` flag. Member creation stays SERVER-SIDE + owner-gated on purpose: request_join
+// is deliberately unauthenticated + uniform-response (security finding M5 — it must never become
+// a "who's a member?" oracle), so we never let an anonymous web form mint a member row directly.
+// A paid request lands flagged 'member'; the owner's one-tap Approve (doApproveRequest) creates
+// the real member. Zero-touch paid->member comes with the Stripe step, where the payment itself
+// is the verification.
+function LiveFlow(){
+  const STEPS = ['You','Plan','Waiver','Billing','Done'];
+  const DONE = STEPS.length - 1;
+  const [step,setStep] = useState(0);
+  const [form,setForm] = useState({name:'', email:PRE_EMAIL, phone:PRE_PHONE});
+  const [plan,setPlan] = useState('trial');
+  const [agreed,setAgreed] = useState(false);
+  const [sig,setSig] = useState('');
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState(null);
+  const [sent,setSent] = useState(null);        // confirmation payload once the request lands
+  const setF = k => e => setForm(f=>({...f, [k]:e.target.value}));
+  const validEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v||'').trim());
+  const selected = PLANS.find(p=>p.id===plan) || PLANS[0];
+  const paid = selected.price > 0;
+  const youOk = form.name.trim().length>1 && validEmail(form.email);
+  const waiverOk = agreed && sig.trim().length>=3;
+
+  const hasInvites = () => { try { return !!(window.CP && CP.data && CP.data.invites && CP.data.invites.requestJoin); } catch(e){ return false; } };
+  const go = d => setStep(s=>Math.max(0, Math.min(DONE, s+d)));
+
+  const submit = () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    const fields = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: (form.phone||'').trim() || undefined,
+      plan: selected.id,
+      waiver: { name: sig.trim(), signed_at: new Date().toISOString() },
+      desired_route: paid ? 'member' : 'lead',
+    };
+    const p = hasInvites() ? CP.data.invites.requestJoin(fields) : Promise.resolve({ok:false, reason:'unconfigured'});
+    const minHold = new Promise(r=>setTimeout(r,350));   // no sub-100ms flash of the working state
+    Promise.resolve(p).then(r=>minHold.then(()=>r), ()=>minHold.then(()=>({ok:false, reason:'offline'})))
+      .then(r=>{
+        setBusy(false);
+        if (r && r.ok) {
+          // Anti-enumeration: request_join returns the SAME ok:true + message whether this is a
+          // brand-new request, an already-pending one, or an existing member. The confirmation
+          // copy we show is driven by the plan THIS visitor picked locally (never by the server
+          // response), so nothing here can leak whether an email was already known to the gym.
+          setSent({ ...fields, planName: selected.name, message: r.message });
+          setStep(DONE);
+          return;
+        }
+        setErr((r && r.error) || (r && r.reason==='unconfigured'
+          ? "Sign-up isn't connected on this device yet — please call the academy on (626) 394-9720."
+          : "Couldn't reach the gym's sign-up system. Check your connection and try again."));
+      });
+  };
+
+  // ---- confirmation (Done) ----
+  if (sent) {
+    const first = (sent.name||'').split(' ')[0] || 'and welcome';
+    return (
+      <Card>
+        <div className="text-center pt-2">
+          <div className="w-16 h-16 rounded-full bg-crimson text-white grid place-items-center text-3xl mx-auto mb-4">✓</div>
+          <h1 className="text-2xl font-bold text-navy">{sent.desired_route==='member' ? `You're all set, ${first}! 🥋` : `Request sent, ${first}! 🥋`}</h1>
+          <p className="text-slate mt-2 mb-5">{sent.desired_route==='member'
+            ? <>You chose <b className="text-navy">{sent.planName}</b>. The gym will confirm your spot and set up billing with you.</>
+            : <>Here's what we've got — the gym will be in touch.</>}</p>
+          <div className="rounded-2xl bg-mist border border-slate/20 p-4 text-left mb-5 text-sm">
+            <div className="flex justify-between py-1"><span className="text-slate">Name</span><span className="font-semibold text-navy">{sent.name}</span></div>
+            <div className="flex justify-between py-1 border-t border-slate/10"><span className="text-slate">Email</span><span className="font-semibold text-navy">{sent.email}</span></div>
+            {sent.phone && <div className="flex justify-between py-1 border-t border-slate/10"><span className="text-slate">Phone</span><span className="font-semibold text-navy">{sent.phone}</span></div>}
+            <div className="flex justify-between py-1 border-t border-slate/10"><span className="text-slate">Plan</span><span className="font-semibold text-navy">{sent.planName}</span></div>
+          </div>
+          <div className="rounded-2xl border border-slate/25 p-4 text-left mb-5">
+            <div className="text-sm font-semibold text-navy mb-1">What happens next</div>
+            <ul className="text-sm text-slate space-y-1">
+              <li>• The front desk will confirm {sent.phone ? 'and can text ' + sent.phone : 'by email'}</li>
+              {sent.desired_route==='member' && <li>• They'll set up your billing with you — bank transfer or card</li>}
+              <li>• You'll sign the academy's full waiver before your first class</li>
+              <li>• Bring a gi — loaners available at the desk</li>
+            </ul>
+          </div>
+          <p className="text-xs text-slate/60">Want to talk sooner? Call the academy on (626) 394-9720.</p>
+        </div>
+      </Card>
+    );
+  }
+
+  // ---- steps ----
+  const screens = [
+    // 0 — You
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Join Cia Paulista</h1>
+      <p className="text-slate mt-1 mb-6">Sign up in about a minute — no password needed.</p>
+      {(PRE_PHONE||PRE_EMAIL) && <div className="mb-4 text-sm bg-gold/15 border border-gold/40 text-navy rounded-xl px-3 py-2">👋 Your gym sent you this link — we've pre-filled what they already had.</div>}
+      <Field label="Full name" value={form.name} onChange={setF('name')} placeholder="Alex Silva" />
+      <Field label="Email" type="email" value={form.email} onChange={setF('email')} placeholder="name@email.com" />
+      <Field label="Phone (optional)" type="tel" inputMode="tel" value={form.phone} onChange={setF('phone')} placeholder="(626) 555-0134" />
+      <Primary disabled={!youOk} onClick={()=>go(1)}>Continue</Primary>
+      <p className="text-xs text-slate/70 mt-3 text-center">No charge today. The gym reaches out to finish setting you up.</p>
+    </div>,
+    // 1 — Plan
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Choose your plan</h1>
+      <p className="text-slate mt-1 mb-5">Change or cancel anytime. Nothing is charged here.</p>
+      <div className={PLAN_GRID}>
+        {PLANS.map(p=>(
+          <button key={p.id} onClick={()=>setPlan(p.id)}
+            className={"w-full text-left rounded-2xl border p-4 transition "+(plan===p.id?"border-crimson ring-2 ring-crimson/30 bg-crimson/5":"border-slate/25 bg-white")}>
+            <div className="flex justify-between items-start">
+              <div className="font-bold text-navy flex items-center gap-2">{p.name}
+                {p.tag && <span className={"text-[10px] px-2 py-0.5 rounded-full font-semibold "+p.tagColor}>{p.tag}</span>}</div>
+              <div className="font-extrabold text-navy whitespace-nowrap">{money(p.price)}<span className="text-xs font-medium text-slate">{p.unit}</span></div>
+            </div>
+            <div className="text-sm text-slate mt-1">{p.desc}</div>
+          </button>
+        ))}
+      </div>
+      <div className="mt-5"><Primary onClick={()=>go(1)}>Continue</Primary></div>
+    </div>,
+    // 2 — Waiver
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Safety & waiver</h1>
+      <p className="text-slate mt-1 mb-3">Please read this before you train.</p>
+      <div className={WAIVER_H+" overflow-y-auto text-xs text-slate bg-mist rounded-xl border border-slate/20 p-3 mb-4 leading-relaxed"}>
+        <p className="font-semibold text-navy mb-1">Assumption of risk &amp; release — plain-English summary</p>
+        Brazilian Jiu-Jitsu and grappling are full-contact activities. Injuries do happen: bruises, sprains,
+        joint injuries, broken bones, concussions, skin infections picked up on the mats and, rarely, serious
+        permanent injury. By signing you say you understand those risks and take them on voluntarily, and you
+        release Cia Paulista Jiu-Jitsu, its instructors and staff from liability for injuries sustained while
+        training, to the fullest extent California law allows. You confirm you (or your child) are fit to train
+        or have a doctor's clearance, you'll follow the safety and hygiene rules, and you allow the academy to
+        arrange emergency medical care if you can't consent yourself at the time.
+        <p className="mt-2 font-semibold text-navy">This is a summary, not the contract. The academy's full
+          waiver is the document that counts — the front desk will give it to you to read and sign before
+          your first class.</p>
+      </div>
+      <label className="flex items-start gap-2 text-sm text-slate mb-3">
+        <input type="checkbox" className="mt-1" checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
+        I've read this summary, and I'll sign the academy's full waiver before I train.
+      </label>
+      <Field label="Type your full name" placeholder={form.name.trim()||'Your full name'}
+             value={sig} onChange={e=>setSig(e.target.value)} />
+      <p className="text-xs text-slate/70 -mt-1 mb-3">Your name and today's date go to the front desk with the rest of your details.</p>
+      <Primary disabled={!waiverOk} onClick={()=>go(1)}>Agree & continue</Primary>
+    </div>,
+    // 3 — Billing
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Billing</h1>
+      <p className="text-slate mt-1 mb-4">{paid
+        ? 'Nothing is charged here — this is just what your membership costs.'
+        : 'Your free trial has no charge. Just confirm and you’re done.'}</p>
+      <div className="rounded-2xl bg-mist border border-slate/20 p-4 mb-4">
+        <div className="flex justify-between text-sm"><span className="text-slate">{selected.name}</span><span className="font-semibold text-navy">{money(selected.price)}{selected.unit}</span></div>
+        {selected.unit==='/mo' && <div className="text-xs text-slate/70 mt-2">Renews monthly. Cancel anytime.</div>}
+      </div>
+      {paid && (
+        <div className="rounded-2xl border border-slate/25 p-4 mb-4">
+          <div className="font-semibold text-navy text-sm mb-1">Payment is set up with the front desk</div>
+          <p className="text-sm text-slate">You can't pay here. Finish signing up and the front desk will set up your
+            payment method with you on your first visit — bank transfer or card, whichever you prefer.</p>
+        </div>
+      )}
+      {err && <div className="rounded-xl border border-slate/25 p-3 mb-3 text-sm text-slate leading-relaxed">{err}</div>}
+      <Primary disabled={busy} onClick={submit}>{busy ? 'Sending…' : 'Finish signing up'}</Primary>
+      <p className="text-xs text-slate/60 mt-3 text-center">No password, no charge today — the gym finishes setting you up.</p>
+    </div>,
+  ];
+
+  // brand card + progress + back chrome (self-contained live component)
+  function Card({children}){
+    return (
+      <div className="w-full max-w-[560px] md:max-w-[760px] mx-auto my-auto">
+        <div className="app-card bg-white rounded-2xl md:rounded-3xl overflow-hidden">
+          <div className={GUTTER+" bg-navy text-white py-4"}>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-md bg-crimson grid place-items-center font-black text-sm">CP</div>
+              <span className="font-bold text-sm md:text-base">Cia Paulista Jiu-Jitsu</span>
+            </div>
+          </div>
+          {step<DONE && (
+            <div className={GUTTER+" pt-4 flex gap-1"}>
+              {STEPS.slice(0,DONE).map((_,i)=>(
+                <div key={i} className={"h-1.5 flex-1 rounded-full "+(i<=step?'bg-crimson':'bg-slate/20')}></div>
+              ))}
+            </div>
+          )}
+          <div className={GUTTER+" py-5 md:py-8 min-h-[440px] md:min-h-[520px]"}>{children}</div>
+          {step>0 && step<DONE && (
+            <div className={GUTTER+" pb-5 -mt-2"}>
+              <button onClick={()=>go(-1)} className="text-sm text-slate hover:text-navy">← Back</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return <Card>{screens[step]}</Card>;
+}
+
+// The demo/staging wizard below (Phone -> Code -> You -> Plan -> Waiver -> Payment -> Done)
+// renders ONLY when !IS_LIVE — App() returns <LiveFlow/> for real traffic before any of its
+// hooks run, so IS_LIVE is always false by the time this function body executes below.
+// Its own internal `IS_LIVE ? … : …` copy forks are therefore inert on purpose: the staging
+// preview / jsdom dev walkthrough must keep working byte-for-byte (nothing here drives a
+// test suite today, but a future one may), so this component is left otherwise untouched
+// rather than stripped down to the demo-only half of every fork.
+function App(){
+  // LIVE renders the full staging-parity signup flow (LiveFlow: You -> Plan -> Waiver ->
+  // Billing -> Done), which paints its own white brand card + progress chrome. The demo
+  // wizard below runs ONLY when !IS_LIVE and is left byte-for-byte unchanged.
+  if (IS_LIVE) return <LiveFlow/>;
+  const [step,setStep] = useState(0);
+  const [phone,setPhone] = useState(PRE_PHONE);
+  const [code,setCode] = useState('');
+  const [info,setInfo] = useState({first:'',last:'',email:PRE_EMAIL,dob:'',isChild:false,childNames:[]});
+  const [plan,setPlan] = useState('adult');
+  const [agreed,setAgreed] = useState(false);
+  const [sig,setSig] = useState('');
+  const [card,setCard] = useState({num:'',exp:'',cvc:'',zip:''});
+  // ACH-first: bank is the default method everywhere (settled payments architecture —
+  // us_bank_account ~0.8% capped $5 vs ~2.9% on cards, and the gym keeps the difference).
+  const [pmethod,setPmethod] = useState('bank');
+  const [bank,setBank] = useState({name:'',routing:'',acct:'',type:'checking'});
+  const [deferred,setDeferred] = useState(false);   // finished without a payment method on file
+  const selected = PLANS.find(p=>p.id===plan);
+  // Step through the flow (demo/staging only — SKIPPED is always empty now; see above).
+  const go = d => setStep(s=>{
+    let n = s + d;
+    while (SKIPPED.indexOf(n) >= 0) n += (d >= 0 ? 1 : -1);
+    return Math.max(0, Math.min(STEP_DONE, n));
+  });
+  const setI = (k)=>e=>setInfo({...info,[k]:e.target.value});
+
+  // children helpers
+  const toggleChild = e => setInfo({...info, isChild:e.target.checked,
+    childNames: e.target.checked && info.childNames.length===0 ? ['',''] : info.childNames});
+  const updateChild = (i,v)=>{const c=[...info.childNames]; c[i]=v; setInfo({...info,childNames:c});};
+  const addChild = ()=>setInfo({...info,childNames:[...info.childNames,'']});
+  const removeChild = i=>setInfo({...info,childNames:info.childNames.filter((_,k)=>k!==i)});
+
+  const fmtCard = v => v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim();
+  const fmtExp = v => v.replace(/\D/g,'').slice(0,4).replace(/(.{2})(.+)/,'$1/$2');
+  const row2 = ROW2;   // stacked on phone, 2-col field rows from tablet portrait up (md:)
+  const youOk = info.first && info.last && info.email && (!info.isChild || (info.childNames[0]||'').trim());
+
+  // Payment (demo form only — live hands off to Stripe and has nothing to validate here).
+  const payOk = pmethod==='bank'
+    ? (bank.name.trim().length>2 && bank.routing.length===9 && bank.acct.length>=4)
+    : (card.num.replace(/\s/g,'').length>=16 && card.exp.length===5 && card.cvc.length>=3);
+  const fillDemoPayment = () => pmethod==='bank'
+    ? setBank({name:((info.first+' '+info.last).trim()||'Alex Silva'), routing:'110000000', acct:'000123456789', type:'checking'})
+    : setCard({num:'4242 4242 4242 4242', exp:'12/29', cvc:'123', zip:'91016'});
+
+  // NOTE: the live join request no longer lives here — App() returns <LiveFlow/> for
+  // IS_LIVE before any of this component's hooks run (see the comment above App()), so
+  // everything below is the staging/demo wizard only. It used to also submit a real lead
+  // on live at the Done step; that call (CP.data.leads.add) is gone, replaced by
+  // LiveFlow's CP.data.invites.requestJoin — never both, never double-inserted.
+
+  const screens = [
+    // 0 — Phone
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Join Cia Paulista</h1>
+      <p className="text-slate mt-1 mb-6">Sign up in about a minute. No passwords — we'll text you a code.</p>
+      {(PRE_PHONE||PRE_EMAIL) && <div className="mb-4 text-sm bg-gold/15 border border-gold/40 text-navy rounded-xl px-3 py-2">👋 Your gym sent you this link — we've pre-filled what they already had.</div>}
+      <Field label="Mobile number" type="tel" inputMode="tel" placeholder="(626) 555-0134"
+             value={phone} onChange={e=>setPhone(e.target.value)} />
+      <Primary disabled={phone.replace(/\D/g,'').length<10} onClick={()=>go(1)}>Text me a code</Primary>
+      <p className="text-xs text-slate/70 mt-3 text-center">By continuing you agree to receive account texts. Reply STOP to opt out.</p>
+    </div>,
+    // 1 — Code
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Enter the code</h1>
+      <p className="text-slate mt-1 mb-6">We sent a 6-digit code to <b className="text-navy">{phone||'your phone'}</b>.</p>
+      <input value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+        inputMode="numeric" placeholder="• • • • • •"
+        className="field w-full text-center tracking-[0.5em] text-2xl font-bold rounded-xl border border-slate/30 py-4 mb-4"/>
+      <Primary disabled={code.length<6} onClick={()=>go(1)}>Verify & continue</Primary>
+      <button onClick={()=>setCode('123456')} className="w-full text-sm text-slate mt-3 underline">Demo: autofill code</button>
+    </div>,
+    // 2 — You
+    <div>
+      <h1 className="text-2xl font-bold text-navy">A bit about you</h1>
+      <p className="text-slate mt-1 mb-5">This sets up your member profile.</p>
+      <div className={row2}>
+        <Field label="First name" value={info.first} onChange={setI('first')} />
+        <Field label="Last name" value={info.last} onChange={setI('last')} />
+      </div>
+      <div className={row2}>
+        <Field label="Email" type="email" value={info.email} onChange={setI('email')} />
+        <Field label="Date of birth" type="date" value={info.dob} onChange={setI('dob')} />
+      </div>
+      <label className="flex items-center gap-2 text-sm text-slate mb-4">
+        <input type="checkbox" checked={info.isChild} onChange={toggleChild}/>
+        I'm signing up my child(ren) — you'll be the guardian on the account
+      </label>
+      {info.isChild && <div>
+        <div className={row2}>
+          {info.childNames.map((c,i)=>(
+            <div key={i} className="relative">
+              <Field label={`Child ${i+1} full name`} value={c} onChange={e=>updateChild(i,e.target.value)} />
+              {info.childNames.length>1 &&
+                <button onClick={()=>removeChild(i)} title="Remove"
+                  className="absolute right-3 top-[34px] text-slate hover:text-crimson">✕</button>}
+            </div>
+          ))}
+        </div>
+        <button onClick={addChild}
+          className="text-sm font-semibold text-navy border border-slate/30 rounded-lg px-3 py-2 mb-4 hover:bg-slate/5">+ Add More Children</button>
+      </div>}
+      <Primary disabled={!youOk} onClick={()=>go(1)}>Continue</Primary>
+    </div>,
+    // 3 — Plan
+    <div>
+      <h1 className="text-2xl font-bold text-navy">Choose your plan</h1>
+      <p className="text-slate mt-1 mb-5">Change or cancel anytime.</p>
+      <div className={PLAN_GRID}>
+        {PLANS.map(p=>(
+          <button key={p.id} onClick={()=>setPlan(p.id)}
+            className={"w-full text-left rounded-2xl border p-4 transition "+(plan===p.id?"border-crimson ring-2 ring-crimson/30 bg-crimson/5":"border-slate/25 bg-white")}>
+            <div className="flex justify-between items-start">
+              <div className="font-bold text-navy flex items-center gap-2">{p.name}
+                {p.tag && <span className={"text-[10px] px-2 py-0.5 rounded-full font-semibold "+p.tagColor}>{p.tag}</span>}</div>
+              <div className="font-extrabold text-navy whitespace-nowrap">{money(p.price)}<span className="text-xs font-medium text-slate">{p.unit}</span></div>
+            </div>
+            <div className="text-sm text-slate mt-1">{p.desc}</div>
+          </button>
+        ))}
+      </div>
+      <div className="mt-5"><Primary onClick={()=>go(1)}>Continue</Primary></div>
+    </div>,
+    // 4 — Waiver
+    /* The binding document is the academy's own waiver (legal/waiver-liability-release.md
+       is still an unapproved draft with bracketed placeholders, so it must not be presented
+       here as final). What this step shows is an accurate PLAIN-ENGLISH SUMMARY of it, and
+       it says out loud which document actually counts. The typed name is persisted with the
+       applicant's record (see submitLead) — a signature nobody keeps is not a signature. */
+    <div>
+      <h1 className="text-2xl font-bold text-navy">{IS_LIVE?'Safety & waiver':'Liability waiver'}</h1>
+      <p className="text-slate mt-1 mb-3">{info.isChild?'As guardian, read this on behalf of your child(ren).':'Please read this before you train.'}</p>
+      <div className={WAIVER_H+" overflow-y-auto text-xs text-slate bg-mist rounded-xl border border-slate/20 p-3 mb-4 leading-relaxed"}>
+        <p className="font-semibold text-navy mb-1">Assumption of risk &amp; release — plain-English summary</p>
+        Brazilian Jiu-Jitsu and grappling are full-contact activities. Injuries do happen: bruises, sprains,
+        joint injuries, broken bones, concussions, skin infections picked up on the mats and, rarely, serious
+        permanent injury. By signing you say you understand those risks and take them on voluntarily, and you
+        release Cia Paulista Jiu-Jitsu, its instructors and staff from liability for injuries sustained while
+        training, to the fullest extent California law allows. You confirm you (or your child) are fit to train
+        or have a doctor's clearance, you'll follow the safety and hygiene rules, and you allow the academy to
+        arrange emergency medical care if you can't consent yourself at the time.
+        {IS_LIVE
+          ? <p className="mt-2 font-semibold text-navy">This is a summary, not the contract. The academy's full
+              waiver is the document that counts — the front desk will give it to you to read and sign before
+              your first class.</p>
+          : <p className="mt-2">Demo copy — a shortened summary. The academy's full waiver is signed at the gym.</p>}
+      </div>
+      <label className="flex items-start gap-2 text-sm text-slate mb-3">
+        <input type="checkbox" className="mt-1" checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
+        {IS_LIVE
+          ? "I've read this summary, and I'll sign the academy's full waiver before I train."
+          : 'I have read and agree to the waiver above.'}
+      </label>
+      <Field label={IS_LIVE?'Type your full name':'Type your full name to sign'}
+             placeholder={info.isChild?'Guardian name':(info.first+' '+info.last).trim()}
+             value={sig} onChange={e=>setSig(e.target.value)} />
+      {IS_LIVE && <p className="text-xs text-slate/70 -mt-1 mb-3">Your name and the date go to the front desk with the rest of your details.</p>}
+      <Primary disabled={!agreed||sig.trim().length<3} onClick={()=>go(1)}>{IS_LIVE?'Agree & continue':'Sign & continue'}</Primary>
+    </div>,
+    // 5 — Payment
+    /* LIVE stacks no money claims: nothing can be charged here, so there is no "Secured by
+       Stripe" badge, no "Due today" line and no second no-charge disclaimer — one plain
+       sentence does the whole job. The plan price stays (it's what the membership costs,
+       not what is being taken now). The demo/staging path keeps the full checkout. */
+    <div>
+      <h1 className="text-2xl font-bold text-navy">{IS_LIVE?'Billing':'Payment'}</h1>
+      <p className="text-slate mt-1 mb-4">{IS_LIVE
+        ? 'Nothing is charged here — this is just what your membership costs.'
+        : <>Secured by Stripe. {selected.price===0 && 'No charge today.'}</>}</p>
+      <div className="rounded-2xl bg-mist border border-slate/20 p-4 mb-4">
+        <div className="flex justify-between text-sm"><span className="text-slate">{selected.name}</span><span className="font-semibold text-navy">{money(selected.price)}{selected.unit}</span></div>
+        {!IS_LIVE && <div className="flex justify-between text-sm mt-1"><span className="text-slate">Due today</span><span className="font-bold text-navy">{selected.price===0?'$0.00':money(selected.price)+'.00'}</span></div>}
+        {selected.id==='trial' && !IS_LIVE && <div className="text-xs text-slate/70 mt-2">Card on file; first charge after your 7-day trial. Cancel anytime before then.</div>}
+        {selected.unit==='/mo' && <div className="text-xs text-slate/70 mt-2">Renews monthly. Cancel anytime.</div>}
+      </div>
+      {IS_LIVE ? (
+        /* LIVE — the real thing is a Stripe SetupIntent collected by Stripe's own hosted
+           fields, so this page has no card/bank inputs to render until that Edge Function
+           is switched on. Per the real-mode honesty rule: say so, never fake a charge.
+           The applicant still finishes — they land in `external`/`invited`, which is exactly
+           what the billing state machine expects for someone with no method on file. */
+        <div>
+          <div className="rounded-2xl border border-slate/25 p-4 mb-4">
+            <div className="font-semibold text-navy text-sm mb-1">Billing isn't set up on this page yet</div>
+            <p className="text-sm text-slate">You can't pay here. Finish signing up and the front desk will set up your
+              payment method with you on your first visit — bank transfer or card, whichever you prefer.</p>
+          </div>
+          <Primary onClick={()=>{setDeferred(true); go(1);}}>Finish signing up</Primary>
+        </div>
+      ) : (
+        /* STAGING / dev preview — walkable demo form. Nothing entered here leaves the browser. */
+        <div>
+          <div className="mb-4 text-xs bg-gold/15 border border-gold/40 text-navy rounded-xl px-3 py-2">
+            <b>Staging preview</b> — no real payment is taken and nothing you type here is sent anywhere.
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {[['bank','Bank account','Lowest fees'],['card','Card','']].map(([id,label,note])=>(
+              <button key={id} onClick={()=>setPmethod(id)}
+                className={"rounded-xl border px-3 py-2.5 text-left transition "+(pmethod===id?"border-crimson ring-2 ring-crimson/30 bg-crimson/5":"border-slate/25 bg-white")}>
+                <div className="text-sm font-semibold text-navy">{label}</div>
+                {note && <div className="text-[11px] text-slate">{note}</div>}
+              </button>
+            ))}
+          </div>
+
+          {pmethod==='bank' ? <div>
+            <Field label="Name on account" value={bank.name} onChange={e=>setBank({...bank,name:e.target.value})}/>
+            <div className={row2}>
+              <Field label="Routing number" inputMode="numeric" placeholder="110000000"
+                     value={bank.routing} onChange={e=>setBank({...bank,routing:e.target.value.replace(/\D/g,'').slice(0,9)})}/>
+              <Field label="Account number" inputMode="numeric" placeholder="000123456789"
+                     value={bank.acct} onChange={e=>setBank({...bank,acct:e.target.value.replace(/\D/g,'').slice(0,17)})}/>
+            </div>
+            <label className="block mb-3">
+              <span className="block text-sm text-slate mb-1">Account type</span>
+              <select value={bank.type} onChange={e=>setBank({...bank,type:e.target.value})}
+                className="field w-full rounded-xl border border-slate/30 px-4 py-3 text-[16px] bg-white transition">
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+              </select>
+            </label>
+            <p className="text-xs text-slate/70 mb-3">Bank transfer costs the academy far less than a card, so more of your
+              dues stay on the mat. You'll authorize each payment by ACH debit; cancel anytime.</p>
+          </div> : <div>
+            <Field label="Card number" inputMode="numeric" placeholder="4242 4242 4242 4242"
+                   value={card.num} onChange={e=>setCard({...card,num:fmtCard(e.target.value)})}/>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Expiry" placeholder="MM/YY" value={card.exp} onChange={e=>setCard({...card,exp:fmtExp(e.target.value)})}/>
+              <Field label="CVC" inputMode="numeric" placeholder="123" value={card.cvc} onChange={e=>setCard({...card,cvc:e.target.value.replace(/\D/g,'').slice(0,4)})}/>
+              <Field label="ZIP" inputMode="numeric" placeholder="91016" value={card.zip} onChange={e=>setCard({...card,zip:e.target.value.replace(/\D/g,'').slice(0,5)})}/>
+            </div>
+          </div>}
+
+          <Primary disabled={!payOk} onClick={()=>go(1)}>
+            {selected.price===0?'Start free trial':'Start membership · '+money(selected.price)}
+          </Primary>
+          <div className="flex items-center justify-between mt-3">
+            <button onClick={fillDemoPayment} className="text-sm text-slate underline">Demo: autofill</button>
+            <button onClick={()=>{setDeferred(true); go(1);}} className="text-sm text-slate underline">Skip for now →</button>
+          </div>
+          <p className="text-xs text-slate/60 mt-3 text-center">🔒 In the real build these fields are Stripe's, not ours.</p>
+        </div>
+      )}
+    </div>,
+    // 6 — Done
+    IS_LIVE ? (
+      /* LIVE — nothing here texted, charged or activated anything, so the confirmation says
+         exactly what did happen: the gym has their details and a person will follow up.
+         The applicant has just been handed to the Leads CRM by the effect above. */
+      <div className="text-center pt-4">
+        <div className="w-16 h-16 rounded-full bg-crimson text-white grid place-items-center text-3xl mx-auto mb-4">✓</div>
+        <h1 className="text-2xl font-bold text-navy">Thanks, {info.first||'and welcome'}! 🥋</h1>
+        <p className="text-slate mt-2 mb-6">We've got your details. Someone from the gym will reach out shortly to
+          finish setting up your {selected.name} and get you on the mat.</p>
+        <div className="rounded-2xl bg-mist border border-slate/20 p-4 text-left mb-5">
+          <div className="text-sm font-semibold text-navy mb-1">What happens next</div>
+          <ul className="text-sm text-slate space-y-1">
+            <li>• The front desk will call or text {phone||'you'} to confirm</li>
+            <li>• They'll sort out billing and your first class with you</li>
+            <li>• You'll sign the academy's full waiver before you train</li>
+            <li>• Bring a gi — loaners available at the desk</li>
+          </ul>
+        </div>
+        <p className="text-xs text-slate/60">Want to talk sooner? Call the academy on (626) 394-9720.</p>
+      </div>
+    ) : (
+      <div className="text-center pt-4">
+        <div className="w-16 h-16 rounded-full bg-crimson text-white grid place-items-center text-3xl mx-auto mb-4">✓</div>
+        <h1 className="text-2xl font-bold text-navy">You're in! 🥋</h1>
+        <p className="text-slate mt-2 mb-6">Welcome to Cia Paulista, {info.first||'champ'}. {deferred
+          ? <>Your profile is set up — billing for your {selected.name} isn't set up yet.</>
+          : <>Your {selected.name} is active.</>}</p>
+        <div className="rounded-2xl bg-mist border border-slate/20 p-4 text-left mb-5">
+          <div className="text-sm font-semibold text-navy mb-1">Next steps</div>
+          <ul className="text-sm text-slate space-y-1">
+            {deferred && <li>• Finish billing with the front desk on your first visit</li>}
+            <li>• Book your first class from the schedule</li>
+            <li>• Add this app to your home screen for check-in</li>
+            <li>• Bring a gi — loaners available at the desk</li>
+          </ul>
+        </div>
+        <Primary onClick={()=>{setDeferred(false); setStep(0);}}>Book my first class</Primary>
+        <button onClick={()=>{setDeferred(false); setStep(0);}} className="w-full text-sm text-slate mt-3 underline">Restart demo</button>
+      </div>
+    ),
+  ];
+
+  // RAW app — no device frame, no toggle. One centred card that fills a phone
+  // edge-to-edge and grows roomier from tablet portrait (md:) up through desktop.
+  // `my-auto` (not justify-center) centres only when there IS spare height, so a
+  // short landscape viewport scrolls from the top instead of clipping the header.
+  return (
+    <div className="w-full max-w-[560px] md:max-w-[760px] mx-auto my-auto">
+      <div className="app-card bg-white rounded-2xl md:rounded-3xl overflow-hidden">
+        {/* brand */}
+        <div className={GUTTER+" bg-navy text-white py-4"}>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-md bg-crimson grid place-items-center font-black text-sm">CP</div>
+            <span className="font-bold text-sm md:text-base">Cia Paulista Jiu-Jitsu</span>
+          </div>
+        </div>
+        {/* progress — one segment per step THIS environment actually has */}
+        {step<STEP_DONE && (
+          <div className={GUTTER+" pt-4 flex gap-1"}>
+            {VISIBLE_STEPS.map(i=>(
+              <div key={i} className={"h-1.5 flex-1 rounded-full "+(i<=step?'bg-crimson':'bg-slate/20')}></div>
+            ))}
+          </div>
+        )}
+        {/* body */}
+        <div className={GUTTER+" py-5 md:py-8 min-h-[440px] md:min-h-[520px]"}>{screens[step]}</div>
+        {/* back */}
+        {step>0 && step<STEP_DONE && (
+          <div className={GUTTER+" pb-5 -mt-2"}>
+            <button onClick={()=>go(-1)} className="text-sm text-slate hover:text-navy">← Back</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

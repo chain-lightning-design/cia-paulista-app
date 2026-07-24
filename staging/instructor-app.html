@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B0B0D">
+  <link rel="manifest" href="instructor-app.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>window.__CP_BUILD='Jul 24, 06:53 UTC';window.__CP_ENV='staging'</script>
+  <script src="env.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style id="viewport-fit">
+  /* iOS/iPadOS: 100vh includes the area BEHIND Safari's chrome, so bottom-anchored UI
+     (nav footers, the chat composer) lands below the fold. dvh tracks the VISIBLE
+     viewport. !important because the Tailwind CDN injects its stylesheet at runtime,
+     after this block. */
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh !important; }
+    .min-h-screen { min-height: 100dvh !important; }
+  }
+  /* Home-indicator / notch safe areas (PWA standalone + Safari). Apply to bottom-anchored bars. */
+  .safe-b { padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px); }
+</style>
+<title>Cia Paulista — Instructor (Mat-side)</title>
+<link rel="icon" type="image/png" href="favicon.png"/>
+<script src="env.js"></script>
+<script src="vendor/tailwind.js"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    navy:'#F3F3F5', crimson:'#E11D2A', gold:'#E8B53A', slate:'#9A9AA2', mist:'#1C1C20', good:'#34D27B', teal:'#38BDF8', ink:'#0B0B0D'
+  }}}}
+</script>
+<style>
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* ===== The app IS the page =====
+     No device bezel, no notch, no simulated status bar: mat-side runs raw on the coach's
+     real phone or tablet. Full-height flex column, edge-to-edge on a phone, capped at a
+     comfortable single-column width on tablet/desktop so the roster rows don't stretch
+     into unreadable lines. (A device PREVIEW is a staging-shell concern, external to
+     this file.) */
+  .scr{position:relative;display:flex;flex-direction:column;width:100%;height:100vh;margin:0 auto;overflow:hidden;
+       padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+  @supports (height:100dvh){ .scr{height:100dvh} }
+  @media (min-width:768px){ .scr{max-width:720px} }
+  @media (min-width:1024px){ .scr{max-width:820px} }
+  /* Notch inset for the top bar — the app owns its own safe areas now. */
+  .safe-t{padding-top:max(env(safe-area-inset-top,0px),10px)}
+  .body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}.body::-webkit-scrollbar{display:none}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:#9A9AA2;padding:7px 0;cursor:pointer}
+  .tab.on{color:#E11D2A;font-weight:700}.tab .ic{font-size:18px;line-height:1}
+  .fade{animation:fade .2s ease-out}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .pressable{cursor:pointer;transition:transform .06s}.pressable:active{transform:scale(.97)}
+  /* attendance toggle: filled bright green = present, hollow light ring = absent */
+  .chk{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;border:2px solid rgba(255,255,255,.35);color:transparent;font-weight:900}
+  .chk.on{background:#34D27B;border-color:#34D27B;color:#0B0B0D}
+  /* Tablet: bigger tap targets — a coach taps attendance with a wet/taped hand.
+     Declared AFTER the base .chk/.tab rules so it actually wins (same specificity). */
+  @media (min-width:768px){
+    .tab{font-size:12px;padding:10px 0}
+    .tab .ic{font-size:22px}
+    .chk{width:34px;height:34px}
+  }
+  /* inline working-state spinner (cloud sign-in button) */
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:999px;animation:spn .7s linear infinite;vertical-align:-1px}
+  @keyframes spn{to{transform:rotate(360deg)}}
+  /* ===== Tatame — dark performance theme (red / black / white / gray) ===== */
+  .tatame{color:#F3F3F5}
+  .tatame .bg-white{background:#151517}   /* card / dialog / tabbar surfaces -> dark */
+  .tatame .text-navy{color:#F3F3F5}        /* headings & values -> light */
+  .tatame .bg-navy{background:#2A2A2F}     /* solid neutral buttons / pills / avatar */
+  .tatame ::-webkit-scrollbar{height:8px;width:8px}
+  .tatame ::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:8px}
+</style>
+</head>
+<body class="tatame bg-gradient-to-br from-[#0B0B0D] to-[#151517] min-h-screen text-[#F3F3F5]">
+<div id="app" class="scr"></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="data.js"></script>
+<script src="auth-gate.js" data-app="Instructor App" data-roles="instructor,owner,admin"></script>
+<script src="onboarding.js"></script>
+<script>
+const esc=s=>(''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* Which environment is this phone in? (CP.env — frozen API.) LIVE is a real coach's
+   phone with real students on it: nothing here may claim something happened when it
+   didn't, and nothing may offer to reset "demo data" that is actually the gym's data.
+   Off-live (staging/demo/jsdom) the demo behaves exactly as before. */
+const ENV=(window.CP&&window.CP.env)||{};
+const IS_LIVE=!!ENV.isLive;
+const BELTC={White:'#ECEEF1','Gray-white':'#C3C9D0',Gray:'#9CA3AF','Gray-black':'#5B6470',Yellow:'#E8B53A',Orange:'#EA7317',Green:'#2E9E5B',Blue:'#4F76C9',Purple:'#8160C9',Brown:'#8A5A33',Black:'#2E323C'};
+// IBJJF rule (matches Owner Console): kids belts apply under 16 only — the kids ladder tops out at Green;
+// the 16th-birthday move onto the adult ladder (White → Blue) is awarded from the Owner Console Belts tab.
+const ORDER={Adults:['White','Blue','Purple','Brown','Black'],Kids:['White','Gray-white','Gray','Gray-black','Yellow','Orange','Green']};
+const STUDENTS=[
+  {id:'carlos',n:'Carlos Mendez',prog:'Adults',belt:'White',str:3,cur:38,req:40},
+  {id:'mia',n:'Mia Tanaka',prog:'Adults',belt:'White',str:2,cur:29,req:40},
+  {id:'bruno',n:'Bruno Alves',prog:'Adults',belt:'Purple',str:2,cur:74,req:80},
+  {id:'diego',n:'Diego Costa',prog:'Adults',belt:'Blue',str:0,cur:21,req:60},
+  {id:'aisha',n:'Aisha Khan',prog:'Adults',belt:'White',str:1,cur:30,req:40},
+  {id:'marcus',n:'Marcus Silva',prog:'Adults',belt:'Purple',str:1,cur:55,req:80},
+  {id:'sarah',n:'Sarah Lin',prog:'Adults',belt:'Blue',str:2,cur:52,req:60},
+  {id:'liam',n:'Liam Park',prog:'Kids',belt:'Gray',str:1,cur:28,req:30},
+  {id:'sofia',n:'Sofia Reyes',prog:'Kids',belt:'Yellow',str:2,cur:18,req:30},
+  {id:'leanne',n:'Leanne Park',prog:'Kids',belt:'White',str:0,cur:8,req:30},
+  {id:'kai',n:'Kai Nguyen',prog:'Kids',belt:'Gray',str:0,cur:24,req:30},
+];
+const CLASSES=[
+  {id:'gi', time:'6:30 PM', name:'Gi — All Levels', prog:'Adults', roster:['carlos','mia','bruno','diego','aisha','marcus','sarah']},
+  {id:'kids', time:'4:30 PM', name:'Kids · Little Tigers', prog:'Kids', roster:['liam','sofia','leanne','kai']},
+];
+const INSTRUCTOR='Prof. Marcelo';
+const ready=s=> s.cur/s.req>=0.9;
+function nextRank(s){ if(s.str<4) return {belt:s.belt,str:s.str+1}; const o=ORDER[s.prog]; const i=o.indexOf(s.belt); return {belt:o[Math.min(i+1,o.length-1)],str:0}; }
+function rankLabel(belt,str){ return str>0? belt+' · '+str+' stripe'+(str>1?'s':'') : belt+' belt'; }
+
+// ---------- state ----------
+function fresh(){ return { tab:'today', stack:[], students:JSON.parse(JSON.stringify(STUDENTS)), att:{gi:{carlos:1,bruno:1},kids:{liam:1}}, guests:{}, saved:{} }; }
+let S; function load(){ try{const s=localStorage.getItem('cp_instr_v1'); S=s?JSON.parse(s):fresh();}catch(e){S=fresh();} if(!S.guests)S.guests={}; if(!S.saved)S.saved={}; adoptCanonicalRoster(); }
+function save(){ try{localStorage.setItem('cp_instr_v1',JSON.stringify(S));}catch(e){} }
+
+// ---------- CP.data seams (fail-soft: everything below is optional; the app never depends on the cloud) ----------
+const hasData=()=> !!(window.CP&&CP.data);
+// canonical CP.data.members row -> mat-side student shape. THE one mapping point.
+const REQ_BY_BELT={White:40,Blue:60,Purple:80,Brown:100,Black:120};
+function fromCanonical(m){
+  if(!m||!m.id||!m.name) return null;
+  const prog=m.program==='Kids'?'Kids':'Adults';
+  const belt=ORDER[prog].indexOf(m.belt)>=0?m.belt:'White';
+  const a=m.attrs||{};
+  const st=String(m.status||'Active');
+  return { id:m.id, n:m.name, prog, belt,
+           str:Math.max(0,Math.min(4,+(m.stripes||0))),
+           cur:+(a.cur!=null?a.cur:(a.att30!=null?a.att30:0))||0,
+           req:+(a.req||(prog==='Kids'?30:(REQ_BY_BELT[belt]||40))),
+           status:st.charAt(0).toUpperCase()+st.slice(1).toLowerCase(),  // 'active' -> 'Active'
+           _row:m };   // raw canonical row — promotions write the FULL row back so jsonb attrs survive
+}
+// prefer the gym's live member list once this device has synced; the demo seed otherwise.
+const SEED_ROSTERS={}; CLASSES.forEach(c=>{ SEED_ROSTERS[c.id]=c.roster.slice(); });
+function adoptCanonicalRoster(){
+  try{
+    const rows=(hasData()&&CP.data.members)?(CP.data.members.all()||[]):[];
+    const mapped=rows.map(fromCanonical).filter(Boolean);
+    if(!mapped.length){ CLASSES.forEach(c=>{ c.roster=SEED_ROSTERS[c.id].slice(); }); return; }
+    const guests=(S.students||[]).filter(s=>s.drop);              // today's drop-ins stay on the mat list
+    S.students=mapped.concat(guests);
+    CLASSES.forEach(c=>{ c.roster=mapped.filter(s=>s.prog===c.prog).map(s=>s.id); });
+    Object.keys(S.att||{}).forEach(cid=>{ const at=S.att[cid]||{}; // drop stale marks for people no longer listed
+      Object.keys(at).forEach(id=>{ if(!S.students.some(s=>s.id===id)) delete at[id]; }); });
+  }catch(e){}
+}
+// today's kiosk check-ins — read-only annotation on rosters; NEVER touches the local toggles.
+let cloudToday={};   // lower-cased member name -> today's kiosk check-in row
+function refreshCloudToday(){
+  try{
+    if(!hasData()||!CP.data.checkins||!CP.data.status().user) return;
+    CP.data.checkins.today().then(rows=>{
+      const m={}; (rows||[]).forEach(r=>{ if(r&&r.name) m[String(r.name).toLowerCase()]=r; });
+      cloudToday=m;
+      if(!document.getElementById('cfov')) render();  // never repaint under an open sheet
+    }).catch(()=>{});
+  }catch(e){}
+}
+function kioskTime(r){ try{ const d=new Date(r.ts); if(isNaN(d))return ''; let h=d.getHours(); const mm=d.getMinutes(); const ap=h>=12?'PM':'AM'; h=h%12||12; return ' · '+h+':'+(mm<10?'0':'')+mm+' '+ap; }catch(e){ return ''; } }
+// ☁ chip + sign-in sheet — quiet, never nags, never blocks local use.
+function cloudChip(){
+  let st=null; try{ st=hasData()?CP.data.status():null; }catch(e){}
+  const on=!!(st&&st.user);
+  return `<button data-act="cloud" title="${on?'Connected to the gym':'Connect to the gym'}" class="pressable shrink-0 w-11 h-11 grid place-items-center rounded-full border ${on?'border-good/40 text-good':'border-slate/25 text-slate'}">☁</button>`;
+}
+function cloudSheet(){ closeConfirm();
+  let st=null; try{ st=hasData()?CP.data.status():null; }catch(e){}
+  const user=st&&st.user;
+  const configured=!!(st&&st.configured);
+  const ov=document.createElement('div'); ov.id='cfov'; ov.className='absolute inset-0 bg-ink/50 z-50 flex items-end fade';
+  ov.innerHTML=`<div class="bg-white w-full rounded-t-3xl p-5 pb-6">
+    <div class="w-10 h-1 bg-slate/30 rounded-full mx-auto mb-3"></div>
+    <div class="font-bold text-navy text-base">☁ Gym connection</div>
+    ${user?`
+      <div class="text-[12px] text-slate mt-1 mb-4">You're signed in as <b class="text-navy">${esc(user.email||'')}</b>. Front-desk check-ins show up on your rosters automatically.</div>
+      <button data-cf="no" class="pressable w-full rounded-xl bg-navy text-white py-2.5 text-sm font-bold">Done</button>`
+    :!configured?`
+      <div class="text-[12px] text-slate mt-1 mb-4">Cloud isn’t switched on for this copy of the app yet — everything still works right here.</div>
+      <button data-cf="no" class="pressable w-full rounded-xl bg-navy text-white py-2.5 text-sm font-bold">Done</button>`
+    :`
+      <div class="text-[12px] text-slate mt-1 mb-3">Sign in to see who already checked in at the front desk. No rush — everything here works without it.</div>
+      <label class="text-[11px] text-slate">Your email</label>
+      <input id="cl-email" type="email" autocomplete="email" placeholder="you@example.com" class="w-full rounded-xl border border-slate/30 bg-transparent text-navy px-3 py-2.5 text-sm mt-1 mb-2"/>
+      <div id="cl-msg" class="text-[11px] mb-3 hidden"></div>
+      <div class="flex gap-2"><button data-cf="no" class="pressable flex-1 rounded-xl border border-slate/30 py-2.5 text-sm font-semibold">Not now</button>
+        <button data-cf="send" class="pressable flex-1 rounded-xl bg-crimson text-white py-2.5 text-sm font-bold">Email me a sign-in link</button></div>`}
+  </div>`;
+  ov.addEventListener('click',ev=>{
+    const cf=ev.target.closest('[data-cf]');
+    if(cf){ if(cf.dataset.cf==='send') sendMagic(ov,cf); else closeConfirm(); return; }
+    if(ev.target===ov) closeConfirm();
+  });
+  document.getElementById('app').appendChild(ov);
+  // no autofocus on the email field: the software keyboard would cover the
+  // bottom-anchored buttons on phones — let the coach tap in when ready.
+}
+function sendMagic(ov,btn){
+  if(btn.disabled) return;
+  const inp=ov.querySelector('#cl-email'); const msg=ov.querySelector('#cl-msg');
+  const em=(inp&&inp.value||'').trim();
+  const show=(cls,txt)=>{ if(msg){ msg.className='text-[11px] mb-3 '+cls; msg.textContent=txt; } };
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){ show('text-crimson','That email doesn’t look right — check it and try again.'); if(inp)inp.focus(); return; }
+  const idle=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin mr-1"></span>Sending…';
+  const fail=t=>{ btn.disabled=false; btn.innerHTML=idle; show('text-crimson',t); };
+  const sent=()=>{ btn.innerHTML='Sent ✓'; show('text-good','Check your email — tap the link on this phone and you’ll be signed in.');
+    const no=ov.querySelector('[data-cf="no"]'); if(no) no.textContent='Done'; };
+  try{
+    if(!hasData()||!CP.data.auth){ fail('Cloud isn’t set up on this device yet — everything still works locally.'); return; }
+    CP.data.auth.signInMagic(em).then(r=>{ if(r&&r.ok) sent(); else fail((r&&r.error)||'Could not send the link right now — nothing is lost, try again in a minute.'); })
+      .catch(()=>fail('Could not send the link right now — nothing is lost, try again in a minute.'));
+  }catch(e){ fail('Could not send the link right now — nothing is lost, try again in a minute.'); }
+}
+
+/* ---------- log out (a REAL sign-out, not a message) ----------------------------
+   The instructor app sits behind the shared sign-in gate whenever the cloud is
+   configured. Logging out therefore has to (1) end the Supabase session through the
+   same seam every other app uses, and (2) hand the phone back to that gate — a fresh
+   load is what puts the gate up and clears any screen state belonging to the person
+   who just left. Where the cloud isn't configured there is no session to end, and we
+   say so plainly instead of pretending. */
+function reboot(){ try{ if(window.__cpReload) return window.__cpReload(); location.reload(); }catch(e){} }
+function cloudConfigured(){ try{ return !!(hasData()&&typeof CP.data.configured==='function'&&CP.data.configured()); }catch(e){ return false; } }
+function doLogout(){
+  if(!cloudConfigured()){ toast('Sign-in isn’t switched on for this copy of the app — there’s nothing to log out of.'); return; }
+  confirmDialog('Log out of the instructor app on this phone?','Log out',function(){
+    toast('<span class="spin mr-1"></span>Signing you out…');
+    var p=null; try{ p=(hasData()&&CP.data.auth)?CP.data.auth.signOut():null; }catch(e){ p=null; }
+    Promise.resolve(p).catch(function(){}).then(function(){ reboot(); });
+  });
+}
+
+load();
+const stud=id=>S.students.find(x=>x.id===id);
+const present=(cid,id)=> !!(S.att[cid]&&S.att[cid][id]);
+const presentCount=cid=> Object.values(S.att[cid]||{}).filter(Boolean).length;
+const dueList=()=> S.students.filter(ready);
+
+// ---------- ui ----------
+function beltG(belt,str,big){ const h=big?'h-9':'h-6'; const w=big?'w-16':'w-11'; const c=BELTC[belt]||'#ccc';
+  const st=Array.from({length:4}).map((_,i)=>`<span class="inline-block ${big?'w-1.5 h-7':'w-1 h-4'} mx-[1px] rounded-sm" style="background:${i<str?(belt==='Black'?'#fff':'#2E323C'):'#ffffff22'}"></span>`).join('');
+  return `<span class="inline-flex items-center ${w} ${h} rounded-md overflow-hidden align-middle" style="background:${c};border:1px solid #d3d8df"><span class="flex-1"></span><span class="${big?'px-1.5':'px-1'} ${h} flex items-center" style="background:${belt==='Black'?'#C8102E':'#2E323C'}">${st}</span></span>`; }
+function toast(m){ const t=document.createElement('div'); t.className='absolute left-1/2 -translate-x-1/2 bottom-24 bg-ink text-white text-[12px] px-3 py-2 rounded-lg z-40 fade'; t.style.maxWidth='300px'; t.innerHTML=m; document.getElementById('app').appendChild(t); setTimeout(()=>t.remove(),2200); }
+function timeLabel(){ const d=new Date(); let h=d.getHours(); const m=d.getMinutes(); const ap=h>=12?'PM':'AM'; h=h%12||12; return h+':'+(m<10?'0':'')+m+' '+ap; }
+function classGuests(cid){ return (S.guests&&S.guests[cid])||[]; }
+function go(t){ S.tab=t; S.stack=[]; save(); render(); }
+function push(s,d){ S.stack.push({screen:s,data:d||{}}); save(); render(); }
+function pop(){ S.stack.pop(); save(); render(); }
+// No simulated device status bar any more — the real OS draws its own. The top bar owns
+// the notch inset instead (.safe-t).
+function topbar(title,sub){ return `<div class="safe-t shrink-0 px-5 md:px-6 pb-3 flex items-center gap-2">${S.stack.length?`<button data-pop class="pressable text-2xl leading-none text-navy px-1">‹</button>`:''}<div class="flex-1 min-w-0"><div class="font-bold text-lg md:text-xl leading-tight truncate">${title}</div>${sub?`<div class="text-[11px] md:text-[12px] text-slate truncate">${sub}</div>`:''}</div>${cloudChip()}</div>`; }
+const TABS=[['today','📋','Today'],['promotions','🥋','Promotions'],['me','👤','Me']];
+
+// ---------- screens ----------
+function scrToday(){ const due=dueList().length;
+  return topbar('Today','Thursday · '+INSTRUCTOR)+`<div class="body px-5 md:px-6 pb-5 fade">
+    <div class="text-[12px] text-slate">Your classes today</div>
+    <div id="today-classes">
+    ${CLASSES.map((c,ci)=>`<button data-class="${c.id}" ${ci===0?'id="today-first-class"':''} class="pressable w-full text-left rounded-2xl border border-slate/15 p-4 mt-2 flex items-center justify-between">
+      <div><div class="font-semibold text-navy">${c.name}</div><div class="text-[11px] text-slate">${c.time} · ${c.prog} · ${c.roster.length+classGuests(c.id).length} on roster</div></div>
+      <div class="text-right"><div class="text-lg font-bold text-good">${presentCount(c.id)}</div><div class="text-[10px] text-slate">present</div></div></button>`).join('')}
+    </div>
+    <button data-go="promotions" id="today-promotions" class="pressable w-full text-left rounded-2xl bg-navy text-white p-4 mt-3 flex items-center justify-between">
+      <div><div class="font-semibold">Promotions due</div><div class="text-[11px] opacity-80">students who hit their class target</div></div>
+      <div class="text-2xl font-bold">${due}</div></button>
+  </div>`;
+}
+function scrRoster(d){ const c=CLASSES.find(x=>x.id===d.id); if(!c)return scrToday();
+  const ids=c.roster.concat(classGuests(c.id));
+  return topbar(c.name, c.time+' · '+presentCount(c.id)+' / '+ids.length+' present')+`<div class="body px-5 md:px-6 pb-5 fade">
+    <div class="text-[11px] text-slate mb-2">Tap the circle to mark present · tap a name for their progress</div>
+    ${ids.map((id,i)=>{ const s=stud(id); if(!s)return ''; const on=present(c.id,id); const r=ready(s);
+      const kiosk=cloudToday[s.n.toLowerCase()];   // read-only hint — the toggle stays the coach's scratchpad
+      const chip = s.drop? ' <span class="text-[10px] bg-teal/20 text-teal rounded-full px-1.5 py-0.5">drop-in</span>'
+                 : (r? ' <span class="text-[10px] bg-gold/20 text-gold rounded-full px-1.5 py-0.5">promo ready</span>' : '');
+      return `<div class="w-full flex items-center gap-3 rounded-2xl border border-slate/15 p-3 mb-2">
+        <button data-att="${c.id}|${id}" ${i===0?'id="roster-first-att"':''} class="chk pressable ${on?'on':''}">✓</button>
+        <button data-student="${id}" class="pressable flex-1 flex items-center gap-2 text-left">
+          ${beltG(s.belt,s.str)}<div class="flex-1"><div class="font-semibold text-sm">${esc(s.n)}${chip}</div><div class="text-[11px] text-slate">${s.drop?('Drop-in · '+s.belt+(s.phone||s.email?' · contact saved':'')):rankLabel(s.belt,s.str)+' · '+s.cur+'/'+s.req}</div>${kiosk?`<div class="text-[10px] text-slate mt-0.5">☁ Front desk${kioskTime(kiosk)}</div>`:''}</div>
+          <span class="text-slate">›</span>
+        </button></div>`;
+    }).join('')}
+    ${(S.saved&&S.saved[c.id])?`<div class="text-[11px] text-good text-center mt-1 mb-1">✓ Attendance saved ${S.saved[c.id]}</div>`:''}
+    <div class="grid grid-cols-2 gap-2 mt-2">
+      <button data-act="guest" class="pressable rounded-xl border border-slate/30 py-2.5 text-sm font-semibold">＋ Add drop-in</button>
+      <button data-act="saveatt" class="pressable rounded-xl bg-navy text-white py-2.5 text-sm font-bold">Save attendance</button>
+    </div>
+  </div>`;
+}
+function scrStudent(d){ const s=stud(d.id); if(!s)return scrToday(); const r=ready(s); const nx=nextRank(s);
+  return topbar(s.n, rankLabel(s.belt,s.str)+' · '+s.prog)+`<div class="body px-5 md:px-6 pb-5 fade">
+    <div class="rounded-2xl border border-slate/15 p-4 text-center">
+      <div class="flex justify-center">${beltG(s.belt,s.str,true)}</div>
+      <div class="font-bold mt-2">${rankLabel(s.belt,s.str)}</div>
+      ${r?`<div class="text-[11px] text-good font-semibold mt-1">● Ready to promote</div>`:`<div class="text-[11px] text-slate mt-1">${Math.round(s.cur/s.req*100)}% to next</div>`}
+    </div>
+    <div class="rounded-2xl border border-slate/15 p-4 mt-3">
+      <div class="flex justify-between items-center"><div class="text-[10px] text-slate uppercase tracking-wide">Toward next stripe</div><div class="text-[11px] font-semibold">${s.cur}/${s.req}</div></div>
+      <div class="h-2 bg-mist rounded mt-2"><div class="h-2 rounded ${r?'bg-good':'bg-navy/70'}" style="width:${Math.min(100,Math.round(s.cur/s.req*100))}%"></div></div>
+    </div>
+    <button data-act="promote" data-id="${s.id}" class="pressable w-full mt-4 rounded-xl ${r?'bg-crimson text-white':'border border-slate/30 text-navy'} py-3 text-sm font-bold">🥋 Record promotion → ${rankLabel(nx.belt,nx.str)}</button>
+    ${IS_LIVE?'':`
+    <button data-act="note" class="pressable w-full mt-2 rounded-xl border border-slate/30 py-3 text-sm font-semibold">📝 Add a note</button>
+    <button data-act="msg" class="pressable w-full mt-2 rounded-xl border border-slate/30 py-3 text-sm font-semibold">💬 Message ${s.n.split(' ')[0]}</button>`}
+  </div>`;
+}
+function scrPromotions(){ const due=dueList();
+  return topbar('Promotions due', due.length+' student'+(due.length===1?'':'s')+' ready')+`<div class="body px-5 md:px-6 pb-5 fade">
+    ${due.length?due.map(s=>{ const nx=nextRank(s); return `<div class="w-full flex items-center gap-3 rounded-2xl border border-slate/15 p-3 mb-2">
+      <button data-student="${s.id}" class="pressable flex-1 flex items-center gap-2 text-left">${beltG(s.belt,s.str)}<div class="flex-1"><div class="font-semibold text-sm">${esc(s.n)}</div><div class="text-[11px] text-slate">${rankLabel(s.belt,s.str)} → ${rankLabel(nx.belt,nx.str)} · ${s.cur}/${s.req}</div></div></button>
+      <button data-act="promote" data-id="${s.id}" class="pressable shrink-0 bg-crimson text-white rounded-full px-3 py-1.5 text-[12px] font-bold">Promote</button></div>`;
+    }).join('') : `<div class="text-center text-slate text-sm py-10">No one is due right now.<br>Students appear here at 90% of their class target.</div>`}
+  </div>`;
+}
+function scrMe(){ const todayPresent=CLASSES.reduce((n,c)=>n+presentCount(c.id),0);
+  return topbar('Me')+`<div class="body px-5 md:px-6 pb-5 fade">
+    <div class="rounded-2xl border border-slate/15 p-4 flex items-center gap-3"><div class="w-12 h-12 rounded-full bg-navy text-white grid place-items-center font-bold">M</div><div><div class="font-bold">${INSTRUCTOR}</div><div class="text-[12px] text-slate">Head instructor · Black belt</div></div></div>
+    <div class="grid grid-cols-2 gap-2 mt-3 text-center">
+      <div class="rounded-xl bg-mist p-3"><div class="text-lg font-bold">${CLASSES.length}</div><div class="text-[10px] text-slate">classes today</div></div>
+      <div class="rounded-xl bg-mist p-3"><div class="text-lg font-bold text-good">${todayPresent}</div><div class="text-[10px] text-slate">checked in</div></div>
+    </div>
+    <div class="mt-3 space-y-2">
+      ${(IS_LIVE?[['help','❓','Help & guides']]                       // rows with nothing behind them
+                :[['notifs','🔔','Notifications'],['schedule','📅','My teaching schedule'],['help','❓','Help & guides']])
+        .map(([a,ic,l])=>`<button data-act="${a}" class="pressable w-full flex items-center justify-between rounded-xl border border-slate/15 px-3.5 py-3"><span class="flex items-center gap-3 text-sm font-semibold"><span class="text-lg">${ic}</span>${l}</span><span class="text-slate">›</span></button>`).join('')}
+    </div>
+    <button data-act="logout" class="pressable w-full text-center text-crimson text-sm font-semibold py-3 mt-1">Log out</button>
+    <button data-act="resetdemo" class="pressable w-full text-center text-slate/70 text-[12px] py-2">${IS_LIVE?'↺ Clear today’s attendance marks on this phone':'↺ Reset demo data on this device'}</button>
+  </div>`;
+}
+
+// ---------- confirm ----------
+function closeConfirm(){ const e=document.getElementById('cfov'); if(e)e.remove(); }
+function confirmDialog(msg,yes,onYes){ closeConfirm(); const ov=document.createElement('div'); ov.id='cfov'; ov.className='absolute inset-0 bg-ink/40 z-50 grid place-items-center p-6';
+  ov.innerHTML=`<div class="bg-white rounded-2xl p-5 w-full max-w-[300px] text-center fade"><div class="text-sm font-semibold text-navy">${msg}</div><div class="flex gap-2 mt-4"><button data-cf="no" class="pressable flex-1 rounded-xl border border-slate/30 py-2.5 text-sm font-semibold">Cancel</button><button data-cf="yes" class="pressable flex-1 rounded-xl bg-crimson text-white py-2.5 text-sm font-bold">${yes||'Yes'}</button></div></div>`;
+  ov.addEventListener('click',e=>{ const b=e.target.closest('[data-cf]'); if(b){ const y=b.dataset.cf==='yes'; closeConfirm(); if(y&&onYes)onYes(); return; } if(e.target===ov) closeConfirm(); });
+  document.getElementById('app').appendChild(ov);
+}
+
+// ---------- add drop-in (guest onto this class's roster) ----------
+function addGuest(cid,g){ const c=CLASSES.find(x=>x.id===cid); if(!c)return; const id='g'+Date.now();
+  S.students.push({id,n:g.n,prog:c.prog,belt:g.belt,str:0,cur:0,req:c.prog==='Kids'?30:40,drop:true,phone:g.phone||'',email:g.email||''});
+  S.guests=S.guests||{}; S.guests[cid]=(S.guests[cid]||[]).concat([id]);
+  S.att[cid]=S.att[cid]||{}; S.att[cid][id]=1;   // a drop-in is here by definition → mark present
+  save(); render();
+}
+function addGuestSheet(cid){ const c=CLASSES.find(x=>x.id===cid); if(!c)return; closeConfirm();
+  const belts=ORDER[c.prog]; let sel='White';
+  const ov=document.createElement('div'); ov.id='cfov'; ov.className='absolute inset-0 bg-ink/50 z-50 flex items-end fade';
+  ov.innerHTML=`<div class="bg-white w-full rounded-t-3xl p-5 pb-6">
+    <div class="w-10 h-1 bg-slate/30 rounded-full mx-auto mb-3"></div>
+    <div class="font-bold text-navy text-base">Add a drop-in</div>
+    <div class="text-[11px] text-slate mb-3">Guest for ${esc(c.name)} — checked in on the mat.</div>
+    <label class="text-[11px] text-slate">Name</label>
+    <input id="g-name" autocomplete="off" class="w-full rounded-xl border border-slate/30 bg-transparent text-navy px-3 py-2.5 text-sm mt-1 mb-3" placeholder="Visitor name"/>
+    <label class="text-[11px] text-slate">Belt</label>
+    <div id="g-belts" class="flex flex-wrap gap-1.5 mt-1 mb-3">${belts.map(b=>`<button data-belt="${b}" class="pressable rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold ${b==='White'?'border-crimson text-navy':'border-slate/30 text-slate'}"><span class="inline-block w-3 h-3 rounded-sm align-middle mr-1" style="background:${BELTC[b]};border:1px solid #d3d8df"></span>${b}</button>`).join('')}</div>
+    <div class="grid grid-cols-2 gap-2 mb-1">
+      <div><label class="text-[11px] text-slate">Phone <span class="text-slate/50">(optional)</span></label><input id="g-phone" autocomplete="off" class="w-full rounded-xl border border-slate/30 bg-transparent text-navy px-3 py-2.5 text-sm mt-1" placeholder="(626) 555-0123"/></div>
+      <div><label class="text-[11px] text-slate">Email <span class="text-slate/50">(optional)</span></label><input id="g-email" autocomplete="off" class="w-full rounded-xl border border-slate/30 bg-transparent text-navy px-3 py-2.5 text-sm mt-1" placeholder="name@email.com"/></div>
+    </div>
+    <div class="text-[11px] text-slate/60 mb-4">Contact is optional — saved for follow-up if added.</div>
+    <div class="flex gap-2"><button data-cf="no" class="pressable flex-1 rounded-xl border border-slate/30 py-2.5 text-sm font-semibold">Cancel</button>
+      <button data-cf="add" class="pressable flex-1 rounded-xl bg-crimson text-white py-2.5 text-sm font-bold">Add &amp; check in</button></div>
+  </div>`;
+  ov.addEventListener('click',ev=>{
+    const bb=ev.target.closest('[data-belt]'); if(bb){ sel=bb.dataset.belt; ov.querySelectorAll('[data-belt]').forEach(x=>{ x.className='pressable rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold '+(x.dataset.belt===sel?'border-crimson text-navy':'border-slate/30 text-slate'); }); return; }
+    const cf=ev.target.closest('[data-cf]');
+    if(cf){ if(cf.dataset.cf==='add'){ const ni=ov.querySelector('#g-name'); const nm=(ni.value||'').trim(); if(!nm){ ni.classList.add('border-crimson'); ni.focus(); return; }
+        addGuest(cid,{n:nm,belt:sel,phone:(ov.querySelector('#g-phone').value||'').trim(),email:(ov.querySelector('#g-email').value||'').trim()});
+        closeConfirm(); toast('✓ '+nm.split(' ')[0]+' checked in as a drop-in'); } else { closeConfirm(); } return; }
+    if(ev.target===ov) closeConfirm();
+  });
+  document.getElementById('app').appendChild(ov);
+  setTimeout(()=>{ const i=ov.querySelector('#g-name'); if(i)i.focus(); },40);
+}
+
+// ---------- save attendance (confirmation + persisted state) ----------
+function saveAttendance(cid){ const c=CLASSES.find(x=>x.id===cid); if(!c)return; closeConfirm();
+  const ids=c.roster.concat(classGuests(cid)); const total=ids.length; const pres=presentCount(cid);
+  const absent=ids.filter(id=>!present(cid,id)).map(id=>{ const s=stud(id); return s?s.n.split(' ')[0]:id; });
+  const now=timeLabel(); S.saved=S.saved||{}; S.saved[cid]=now; save(); render();
+  const ov=document.createElement('div'); ov.id='cfov'; ov.className='absolute inset-0 bg-ink/50 z-50 grid place-items-center p-6';
+  ov.innerHTML=`<div class="bg-white rounded-2xl p-5 w-full max-w-[300px] text-center fade">
+    <div class="w-14 h-14 rounded-full bg-good/15 text-good grid place-items-center text-3xl mx-auto mb-2">✓</div>
+    <div class="text-base font-bold text-navy">Attendance saved</div>
+    <div class="text-[12px] text-slate mt-0.5">${esc(c.name)} · ${c.time}</div>
+    <div class="text-3xl font-extrabold text-navy mt-3">${pres}<span class="text-slate text-lg font-bold">/${total}</span></div>
+    <div class="text-[11px] text-slate">present · saved on this phone at ${now}</div>
+    ${absent.length?`<div class="text-[11px] text-slate/80 mt-2 bg-mist rounded-lg px-3 py-2">Not marked: ${absent.map(esc).join(', ')}</div>`:`<div class="text-[11px] text-good mt-2">Everyone on the mat is checked in 🎉</div>`}
+    <button data-cf="ok" class="pressable w-full mt-4 rounded-xl bg-navy text-white py-2.5 text-sm font-bold">Done</button>
+  </div>`;
+  ov.addEventListener('click',ev=>{ if(ev.target.closest('[data-cf]')||ev.target===ov) closeConfirm(); });
+  document.getElementById('app').appendChild(ov);
+}
+
+// ---------- render ----------
+const SCREENS={today:scrToday,promotions:scrPromotions,me:scrMe};
+const SUB={roster:scrRoster,student:scrStudent};
+function render(){ const app=document.getElementById('app'); const top=S.stack[S.stack.length-1]; let content;
+  if(top){ const fn=SUB[top.screen]; content=(fn?fn(top.data):scrToday()); }
+  else content=(SCREENS[S.tab]?SCREENS[S.tab]():scrToday());
+  const tabbar=`<div class="border-t border-slate/10 flex bg-white shrink-0 safe-b">${TABS.map(([id,ic,l])=>`<div class="tab ${(!top&&S.tab===id)?'on':''}" data-go="${id}"><span class="ic">${ic}</span>${l}</div>`).join('')}</div>`;
+  app.innerHTML=content+tabbar;
+}
+
+// ---------- events ----------
+document.getElementById('app').addEventListener('click',e=>{
+  const el=e.target.closest('[data-go],[data-pop],[data-class],[data-student],[data-att],[data-act]'); if(!el)return;
+  if(el.hasAttribute('data-pop')){ pop(); return; }
+  if(el.dataset.go){ go(el.dataset.go); return; }
+  if(el.dataset.class){ push('roster',{id:el.dataset.class}); refreshCloudToday(); return; }
+  if(el.dataset.att){ const [cid,id]=el.dataset.att.split('|'); S.att[cid]=S.att[cid]||{}; if(S.att[cid][id]) delete S.att[cid][id]; else S.att[cid][id]=1; save(); render(); return; }
+  if(el.dataset.student){ push('student',{id:el.dataset.student}); return; }
+  const act=el.dataset.act;
+  if(act==='cloud'){ cloudSheet(); return; }
+  if(act==='promote'){ const s=stud(el.dataset.id); const nx=nextRank(s); confirmDialog('Promote '+esc(s.n)+' to '+rankLabel(nx.belt,nx.str)+'?','Promote',function(){ s.belt=nx.belt; s.str=nx.str; s.cur=0; save();
+      // canonical students: write the promotion back as a FULL row (base = _row) so the
+      // jsonb attrs aren't clobbered and the next adoptCanonicalRoster() can't revert it.
+      if(s._row&&hasData()){ try{
+        const row=Object.assign({},s._row,{belt:s.belt,stripes:s.str,attrs:Object.assign({},s._row.attrs,{cur:0})});
+        s._row=row;   // a second promote must send the new values as its base
+        CP.data.members.upsert(row);
+      }catch(e){} }
+      if(S.stack.length&&S.stack[S.stack.length-1].screen==='student') pop(); render(); toast('🥋 Promoted '+esc(s.n.split(' ')[0])+' to '+rankLabel(nx.belt,nx.str)); }); return; }
+  if(act==='saveatt'||act==='guest'){ const top=S.stack[S.stack.length-1]; const cid=(top&&top.screen==='roster')?top.data.id:null; if(!cid)return; if(act==='saveatt') saveAttendance(cid); else addGuestSheet(cid); return; }
+  // Notes / messages / notification settings / the full schedule have nothing behind them
+  // yet. Off-live they answer honestly and say so; on live those buttons aren't shown at
+  // all, so a coach is never told something was saved when nothing was.
+  if(act==='note'){ toast('Notes aren’t built yet — nothing was saved. (Demo)'); return; }
+  if(act==='msg'){ toast('Messaging isn’t built yet — nothing was sent. (Demo)'); return; }
+  if(act==='notifs'){ toast('Notification settings aren’t built yet. (Demo)'); return; }
+  if(act==='schedule'){ toast('The full teaching schedule isn’t built yet. (Demo)'); return; }
+  if(act==='help'){ if(window.Onboarding){ Onboarding.showWelcome(); } else { toast('The guided tour isn’t available on this device.'); } return; }
+  if(act==='logout'){ doLogout(); return; }
+  // Reset lives inside the app now that nothing wraps it (it used to be a control on the
+  // old prototype page chrome). Confirmed, because it wipes today's attendance marks.
+  // On LIVE the roster is the gym's real member list, so there is no "demo data" to put
+  // back — the control only clears what this phone owns: today's attendance marks.
+  if(act==='resetdemo'){
+    if(IS_LIVE){ confirmDialog('Clear today’s attendance marks on this phone? Your students and their belts are not touched.','Clear',function(){
+        S.att={}; S.guests={}; S.saved={}; S.stack=[];
+        S.students=(S.students||[]).filter(s=>!s.drop);       // today's mat-side drop-ins go too
+        save(); render(); toast('✓ Today’s attendance marks cleared'); }); return; }
+    confirmDialog('Start this device over with the sample roster? Today’s attendance marks are cleared.','Reset',function(){
+      S=fresh(); adoptCanonicalRoster(); save(); render(); toast('↺ Demo data reset'); }); return; }
+});
+render();
+
+// ---------- cloud seams boot (guarded; local-first always) ----------
+if(window.CP&&CP.data){
+  try{ CP.data.onStatus(()=>{ if(!document.getElementById('cfov')) render(); refreshCloudToday(); }); }catch(e){}
+  try{ CP.data.members.onChange(()=>{ adoptCanonicalRoster(); save(); if(!document.getElementById('cfov')) render(); }); }catch(e){}
+  // live walk-ins: a roster left open must show new front-desk check-ins as they land.
+  // data.js self-arms the stream on sign-in (realtime + 12s poll, dedup inside).
+  try{ CP.data.checkins.onNew(r=>{ try{
+    if(!hasData()||!r||!r.name) return;
+    cloudToday[String(r.name).toLowerCase()]=r;
+    if(!document.getElementById('cfov')) render();   // never repaint under an open sheet
+  }catch(e){} }); }catch(e){}
+  refreshCloudToday();
+}
+
+// ---------- onboarding (additive; guarded — never breaks boot) ----------
+if(window.Onboarding){
+  Onboarding.init({
+    key:'cp_onb_instructor',
+    accent:'#E11D2A',
+    helpLabel:'Tour',
+    mountHelp:false, // launched from the "Help & guides" row in the Me tab
+    title:'Welcome, Coach',
+    subtitle:'Run class from your phone.',
+    bullets:[
+      "See today's classes & rosters",
+      'Take attendance with one tap',
+      "View each student's progress",
+      'Record promotions on the spot'
+    ],
+    tour:[
+      { sel:'#today-first-class', title:"Today's classes", body:'Every class you teach today, with live attendance counts. Tap one to open its roster.', place:'bottom' },
+      { sel:'#today-first-class', title:'One-tap attendance', body:'Inside a roster, tap the circle beside each name to mark them present — kept right here on your phone.', place:'bottom' },
+      { sel:'#today-first-class', title:'Student progress', body:'Tap any student to see how close they are to their next stripe or belt.', place:'bottom' },
+      { sel:'#today-promotions', title:'Record promotions', body:'Anyone who hit their class target shows up here. Promote them on the spot with one tap.', place:'top' }
+    ]
+  });
+}
+</script>
+</body>
+</html>

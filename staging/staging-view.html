@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0B0B0D">
+<title>Staging preview — Cia Paulista</title>
+<link rel="icon" href="favicon.png">
+<!-- The shell is the TOP frame, outside the apps' namespaced storage. Loading env.js
+     here puts its own device preferences in the same `stg::` namespace (contract A)
+     instead of leaving loose keys on the shared origin. -->
+<script src="env.js"></script>
+<!--
+  Staging-only device-preview shell (frozen contract C —
+  docs/superpowers/plans/2026-07-21-staging-live-split.md).
+
+  staging-view.html?app=<file.html> iframes that app at a chosen device size.
+  The device frame lives HERE, never inside an app: app sources are permanently
+  de-framed so the live build renders raw and responsive. This shell is only ever
+  copied into the /staging/ output.
+
+  Self-contained: no vendored libs, no external requests.
+  APPS below mirrors the APPS list in tools/deploy_live_site.py — keep in sync.
+
+  Reset handshake (frozen contract A, 2026-07-22 fix wave): this shell posts
+  {type:'cp-staging-reset'} into the frame and shows success ONLY when the app
+  answers {type:'cp-staging-reset-ack'} (env.js answers for all nine apps;
+  auth-gate.js answers on the four gated ones). No answer within 1500ms ⇒ a
+  plain-words failure, never a green tick that lied.
+-->
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; }
+  :root {
+    --ink: #0B0B0D; --panel: #151517; --line: rgba(255,255,255,.09);
+    --text: #E9E9EE; --dim: #9A9AA2; --red: #E11D2A; --amber: #E0B341;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink); color: var(--text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column;
+    height: 100dvh;
+    padding: env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+  }
+
+  /* ---------------------------------------------------------------- toolbar */
+  .bar {
+    flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 10px 14px; background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .badge {
+    font-size: 10.5px; font-weight: 800; letter-spacing: .18em; color: var(--amber);
+    background: rgba(224,179,65,.10); border: 1px solid rgba(224,179,65,.32);
+    border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+  }
+  .hint { color: #6B6B72; font-size: 12px; white-space: nowrap; }
+  .spacer { flex: 1 1 auto; }
+
+  select, .btn, .seg button {
+    font: inherit; color: var(--text); background: #0B0B0D;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
+    padding: 7px 11px; cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s, transform .06s ease;
+  }
+  select { max-width: 46vw; }
+  select:hover, .btn:hover { border-color: rgba(255,255,255,.34); }
+  .btn:active, .seg button:active { transform: translateY(1px) scale(.995); }
+  select:focus-visible, .btn:focus-visible, .seg button:focus-visible, a:focus-visible {
+    outline: 2px solid rgba(255,255,255,.5); outline-offset: 2px;
+  }
+
+  /* segmented device toggle */
+  .seg { display: inline-flex; background: #0B0B0D; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--dim); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: rgba(255,255,255,.10); color: var(--text); }
+
+  a.home { color: var(--dim); text-decoration: none; font-weight: 700; font-size: 13px; padding: 7px 4px; white-space: nowrap; }
+  a.home:hover { color: var(--text); }
+
+  /* Reset status: says only what actually happened (success needs the app's ack). */
+  .status { font-size: 12.5px; font-weight: 700; line-height: 1.35; max-width: 340px; display: none; }
+  .status.show { display: block; }
+  .status.working { color: var(--dim); }
+  .status.good { color: #34D27B; }
+  .status.bad { color: #FF7B85; }
+
+  /* ------------------------------------------------------------------ stage */
+  .stage { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
+  .fit { position: relative; }
+  .deviceWrap {
+    position: absolute; top: 0; left: 0; transform-origin: 0 0;
+    border-radius: 14px; overflow: hidden; background: #000;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.10), 0 24px 60px -20px rgba(0,0,0,.9);
+  }
+  /* Desktop fluid: fills the stage 1:1 (no device bezel look) — a lighter frame, no
+     heavy drop shadow that would only read as odd on a near-full-window panel. */
+  .deviceWrap.fluid { border-radius: 10px; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+  iframe { width: 100%; height: 100%; border: 0; display: block; background: #0B0B0D; }
+  .size { flex: none; text-align: center; color: #5c5c64; font-size: 11.5px; padding: 0 14px 2px; }
+  .size .scaled { color: var(--amber); }
+  .note { flex: none; text-align: center; color: #5c5c64; font-size: 11.5px; padding: 0 14px 10px;
+          max-width: 780px; margin: 0 auto; line-height: 1.45; }
+
+  @media (max-width: 560px) {
+    .bar { gap: 8px; padding: 9px 10px; }
+    .hint { display: none; }
+    select { max-width: 40vw; }
+    .stage { padding: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <span class="badge">STAGING</span>
+
+  <label for="appSel" class="sr" hidden>App</label>
+  <select id="appSel" title="Switch app"></select>
+
+  <div class="seg" role="group" aria-label="Device size">
+    <button type="button" data-dev="phone" title="Phone — 390 &times; 844">Phone</button>
+    <button type="button" data-dev="tabletP" title="Tablet held upright — 834 &times; 1112">Tablet &#8597;</button>
+    <button type="button" data-dev="tabletL" title="Tablet on its side — 1194 &times; 834">Tablet &#8596;</button>
+    <button type="button" data-dev="desktop" title="Desktop or laptop — fills the window at any resolution">Desktop</button>
+  </div>
+
+  <button type="button" class="btn" id="resetBtn">&#8635; Reset login</button>
+  <span class="status" id="resetMsg" role="status" aria-live="polite"></span>
+
+  <span class="spacer"></span>
+  <span class="hint">demo data &middot; code 111111</span>
+  <a class="home" href="index.html">&#8592; Staging hub</a>
+</div>
+
+<div class="stage" id="stage">
+  <div class="fit" id="fit">
+    <div class="deviceWrap" id="wrap">
+      <iframe id="frame" title="App preview" allow="camera;microphone;clipboard-write"></iframe>
+    </div>
+  </div>
+</div>
+<div class="size" id="sizeLabel"></div>
+<div class="note" id="resetNote"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Mirrors APPS in tools/deploy_live_site.py.
+  var APPS = [
+    ['get-started.html',    'Get Started'],
+    ['assistant-home.html', 'Assistant'],
+    ['owner-console.html',  'Owner Console'],
+    ['learn.html',          'Learn Hub'],
+    ['kiosk.html',          'Check-in Kiosk'],
+    ['instructor-app.html', 'Instructor App'],
+    ['member-app.html',     'Member App'],
+    ['member-signup.html',  'Member Signup'],
+    ['public-funnel.html',  'Public Site & Funnel']
+  ];
+
+  var DEVICES = {
+    phone:   { w: 390,  h: 844,  label: 'Phone · 390 × 844' },
+    tabletP: { w: 834,  h: 1112, label: 'Tablet portrait · 834 × 1112' },
+    tabletL: { w: 1194, h: 834,  label: 'Tablet landscape · 1194 × 834' },
+    // Desktop is FLUID: a real desktop/laptop is any resolution, so the preview fills the
+    // window at native 1:1 and lets the app's own responsive layout do the work — instead of
+    // a fixed 1440×900 box shrunk to fit (which letterboxed the app and put a scrollbar
+    // mid-screen). w/h are kept only as a nominal reference; nothing scales in fluid mode.
+    desktop: { w: 1440, h: 900,  fluid: true, label: 'Desktop · fills the window' }
+  };
+
+  // The device each app is actually USED on, so the preview opens honest by
+  // default instead of always showing a phone.
+  var DEFAULT_DEVICE = {
+    'get-started.html':    'desktop',
+    'assistant-home.html': 'desktop',
+    'owner-console.html':  'desktop',
+    'learn.html':          'desktop',
+    'kiosk.html':          'tabletL',
+    'instructor-app.html': 'phone',
+    'member-app.html':     'phone',
+    'member-signup.html':  'phone',
+    'public-funnel.html':  'phone'
+  };
+
+  // What "⟲ Reset login" really wipes, per app — stated before it is tapped.
+  var RESET_BASE = '⟲ Reset login signs out of this practice app and clears everything the ' +
+    'practice copy has saved on this device — staging sign-ins, progress and demo entries ' +
+    'for the practice apps. The real gym app is not touched.';
+  var RESET_EXTRA = {
+    'member-app.html':  ' On the Member App it also clears the demo member link, the onboarding steps and the “add to home screen” prompt.',
+    'get-started.html': ' On Get Started it also clears the signup answers and the quest progress, so the story starts from the beginning.',
+    'kiosk.html':       ' On the Kiosk it also clears today’s practice check-ins on this device.'
+  };
+
+  var appSel    = document.getElementById('appSel');
+  var frame     = document.getElementById('frame');
+  var wrap      = document.getElementById('wrap');
+  var fit       = document.getElementById('fit');
+  var stage     = document.getElementById('stage');
+  var sizeLbl   = document.getElementById('sizeLabel');
+  var resetBtn  = document.getElementById('resetBtn');
+  var resetMsg  = document.getElementById('resetMsg');
+  var resetNote = document.getElementById('resetNote');
+  var segBtns   = [].slice.call(document.querySelectorAll('.seg button'));
+
+  function qs(name) {
+    try { return new URLSearchParams(location.search).get(name); } catch (e) { return null; }
+  }
+  function known(file) {
+    for (var i = 0; i < APPS.length; i++) { if (APPS[i][0] === file) return file; }
+    return null;
+  }
+
+  // Device choice is remembered PER APP: one global memory meant picking Desktop
+  // for the console left the member app on desktop too.
+  function devKey(file) { return 'cp_stage_device::' + file; }
+  function deviceFor(file) {
+    try { var s = localStorage.getItem(devKey(file)); if (s && DEVICES[s]) return s; } catch (e) {}
+    return DEFAULT_DEVICE[file] || 'phone';
+  }
+
+  // Only ever frame an app we know about — a URL can't point this at anything else.
+  var app = known(qs('app')) || 'owner-console.html';
+  var device = deviceFor(app);
+
+  APPS.forEach(function (a) {
+    var o = document.createElement('option');
+    o.value = a[0]; o.textContent = a[1];
+    appSel.appendChild(o);
+  });
+  appSel.value = app;
+
+  function applyDevice() {
+    segBtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-dev') === device)); });
+    var d = DEVICES[device];
+    wrap.classList.toggle('fluid', !!d.fluid);
+    if (d.fluid) {
+      // Fill the whole stage — the framed app gets the real window size and adapts to it.
+      wrap.style.width = '100%';
+      wrap.style.height = '100%';
+    } else {
+      wrap.style.width = d.w + 'px';
+      wrap.style.height = d.h + 'px';
+    }
+    refit();
+  }
+
+  // Scale the device box down to whatever room the window has, without ever
+  // scaling it up past 1:1 — a preview that lies about size is worse than none.
+  // The label ALWAYS states the scale actually applied: judging type sizes at an
+  // unannounced 60% is how a tablet layout gets signed off wrong.
+  function refit() {
+    var d = DEVICES[device];
+    if (d.fluid) {
+      // Fluid (desktop): no scaling, no letterbox. The app fills the stage at 1:1 and
+      // scrolls in place if its own content is tall — exactly like the live desktop build.
+      wrap.style.transform = 'none';
+      fit.style.width = '100%';
+      fit.style.height = '100%';
+      sizeLbl.textContent = d.label + ' · adapts to your screen, shown at full size';
+      return;
+    }
+    var availW = Math.max(120, stage.clientWidth - 32);
+    var availH = Math.max(120, stage.clientHeight - 32);
+    var s = Math.min(1, availW / d.w, availH / d.h);
+    wrap.style.transform = 'scale(' + s + ')';
+    fit.style.width = Math.round(d.w * s) + 'px';
+    fit.style.height = Math.round(d.h * s) + 'px';
+
+    var pct = Math.round(s * 100);
+    sizeLbl.textContent = '';
+    sizeLbl.appendChild(document.createTextNode(d.label + ' · '));
+    if (pct >= 100) {
+      sizeLbl.appendChild(document.createTextNode('shown at full size'));
+    } else {
+      var span = document.createElement('span');
+      span.className = 'scaled';
+      span.textContent = 'shrunk to ' + pct + '% to fit this window — text looks smaller here than on the real device';
+      sizeLbl.appendChild(span);
+    }
+  }
+
+  function applyResetNote() {
+    resetNote.textContent = RESET_BASE + (RESET_EXTRA[app] || '');
+    resetBtn.title = RESET_BASE + (RESET_EXTRA[app] || '');
+  }
+
+  function loadApp(file, push) {
+    app = file;
+    appSel.value = file;
+    frame.src = file;
+    device = deviceFor(file);
+    applyDevice();
+    applyResetNote();
+    clearReset();
+    if (push) {
+      try { history.replaceState(null, '', 'staging-view.html?app=' + encodeURIComponent(file)); } catch (e) {}
+    }
+  }
+
+  segBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      device = b.getAttribute('data-dev');
+      try { localStorage.setItem(devKey(app), device); } catch (e) {}
+      applyDevice();
+    });
+  });
+
+  appSel.addEventListener('change', function () { loadApp(appSel.value, true); });
+
+  /* -------------------------------------------------- reset (ack required) --
+   * The app inside the frame answers {type:'cp-staging-reset-ack'} when it has
+   * heard the reset (frozen contract A, env.js). "Reset ✓" is shown ONLY on that
+   * answer — before this, four of the nine apps did nothing at all while the
+   * shell still flashed a green tick.
+   */
+  var msgTimer = null, ackTimer = null, waiting = false;
+
+  function setReset(kind, text, holdMs) {
+    if (msgTimer) { clearTimeout(msgTimer); msgTimer = null; }
+    resetMsg.className = 'status show ' + kind;
+    resetMsg.textContent = text;
+    if (holdMs) msgTimer = setTimeout(clearReset, holdMs);
+  }
+  function clearReset() {
+    if (msgTimer) { clearTimeout(msgTimer); msgTimer = null; }
+    resetMsg.className = 'status';
+    resetMsg.textContent = '';
+  }
+  function stopWaiting() {
+    waiting = false;
+    if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+    resetBtn.disabled = false;
+  }
+
+  resetBtn.addEventListener('click', function () {
+    if (waiting) return;
+    waiting = true;
+    resetBtn.disabled = true;
+    setReset('working', 'Resetting…');            // working state inside 100ms
+    var sent = false;
+    try {
+      frame.contentWindow.postMessage({ type: 'cp-staging-reset' }, '*');
+      sent = true;
+    } catch (e) { sent = false; }
+    if (!sent) {
+      stopWaiting();
+      setReset('bad', 'Could not reach the app in the preview. Reload this page, then try again.', 8000);
+      return;
+    }
+    ackTimer = setTimeout(function () {
+      stopWaiting();
+      setReset('bad', 'Nothing was reset — this app did not answer. Reload this page and try again.', 8000);
+    }, 1500);
+  });
+
+  window.addEventListener('message', function (ev) {
+    if (!ev || !ev.data || typeof ev.data !== 'object') return;
+    if (ev.data.type !== 'cp-staging-reset-ack') return;
+    // Must come from the app we framed, on this same site (a local file copy
+    // reports no origin at all).
+    var here = ''; try { here = String(location.origin || ''); } catch (e) {}
+    var o = String(ev.origin == null ? '' : ev.origin);
+    if (!(o === here || o === '' || o === 'null')) return;
+    var okSrc = false;
+    try { okSrc = !!ev.source && ev.source === frame.contentWindow; } catch (e) { okSrc = false; }
+    if (!okSrc) return;
+    if (!waiting) return;                          // late/duplicate ack: ignore
+    stopWaiting();
+    setReset('good', 'Reset ✓ — signed out and cleared on this device.', 2600);
+  });
+
+  window.addEventListener('resize', refit);
+  if (window.visualViewport) { try { window.visualViewport.addEventListener('resize', refit); } catch (e) {} }
+
+  loadApp(app, false);
+})();
+</script>
+</body>
+</html>
